@@ -10,6 +10,7 @@ import {
   CounterfactualSimulationInputSchema,
   MealCommitInputSchema,
   MealSimulationInputSchema,
+  ObligationIngestInputSchema,
   VerifyDeliveryInputSchema,
   type DashboardAttentionItem,
   type DashboardResponse,
@@ -31,6 +32,7 @@ import {
 import {
   runActionApprovalAndExecutionWorkflow,
   runMealPlanningWorkflow,
+  runObligationIngestWorkflow,
   runReceiptExtractionWorkflow,
   runVoiceIntakeWorkflow,
 } from "@household/agents";
@@ -828,6 +830,33 @@ export function buildApiApp(customStore?: HouseholdStore): FastifyInstance {
     const householdId = query.householdId || "hh_demo_001";
     const { obligations, forecasts } = runForecastEngine(store, householdId);
     return { obligations, forecasts };
+  });
+
+  // Obligation ingestion pipeline: documents · bills · appointments ·
+  // vehicle service · subscriptions (Supervisor → IntakeAgent → ledger).
+  app.post("/api/obligations/ingest", async (request, reply) => {
+    const body = ObligationIngestInputSchema.parse(request.body ?? {});
+    const structured =
+      body.kind && body.title
+        ? {
+            kind: body.kind,
+            title: body.title,
+            ...(body.provider ? { provider: body.provider } : {}),
+            ...(body.detail ? { detail: body.detail } : {}),
+            ...(body.dueDate ? { dueDate: body.dueDate } : {}),
+            ...(body.amountInr != null ? { amountInr: body.amountInr } : {}),
+            ...(body.recurrence ? { recurrence: body.recurrence } : {}),
+          }
+        : undefined;
+    const result = await runObligationIngestWorkflow(store, {
+      householdId: body.householdId,
+      structured,
+      rawText: body.rawText,
+      source: body.source,
+      idempotencyKey: body.idempotencyKey,
+      onBroadcast: broadcastRealtime,
+    });
+    return reply.status(201).send(result);
   });
 
   app.get("/api/forecasts", async (request) => {
