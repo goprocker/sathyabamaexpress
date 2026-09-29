@@ -1,0 +1,27 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "builds": [
+    {
+      "src": "apps/web/package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    },
+    {
+      "src": "apps/api/src/vercel-entry.ts",
+      "use": "@vercel/node",
+      "config": {
+        "runtime": "nodejs22.x",
+        "maxDuration": 60,
+        "memory": 1024
+      }
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/apps/api/src/vercel-entry.ts" },
+    { "src": "/assets/(.*)", "dest": "/apps/web/dist/assets/$1" },
+    { "src": "/sw.js", "dest": "/apps/web/dist/sw.js" },
+    { "src": "/manifest.webmanifest", "dest": "/apps/web/dist/manifest.webmanifest" },
+    { "src": "/registerSW.js", "dest": "/apps/web/dist/registerSW.js" },
+    { "src": "/(.*)", "dest": "/apps/web/dist/index.html" }
+  ]
+}

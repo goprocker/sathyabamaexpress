@@ -30,9 +30,19 @@ import type { SnapserveCallStatus } from "@household/contracts";
 //     clean speaker labels, no JSON/stage directions, consistent naming.
 // ============================================================================
 
-const SNAPSERVE_BASE_URL = (
-  process.env.SNAPSERVE_BASE_URL || "https://app.snapserve.ai/api"
-).replace(/\/$/, "");
+function resolveSnapserveBaseUrl(): string {
+  const raw = (
+    process.env.SNAPSERVE_BASE_URL ||
+    process.env.SNAPSERVE_API_BASE_URL || // legacy alias
+    "https://app.snapserve.ai/api"
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  // Normalize legacy REST-shape values ("…/v1") to the dashboard API root
+  return raw.endsWith("/v1") ? raw.slice(0, -3) : raw;
+}
+
+const SNAPSERVE_BASE_URL = resolveSnapserveBaseUrl();
 
 const DEFAULT_CALL_TIMEOUT_MS = Number(
   process.env.SNAPSERVE_CALL_TIMEOUT_MS || 120_000
@@ -91,7 +101,15 @@ function snapserveApiKey(): string | null {
   return key ? key : null;
 }
 
+/**
+ * Live calls require BOTH a key and SNAPSERVE_MODE != "simulated"
+ * (TRD §12.1.5 demo fallback). Tests set SNAPSERVE_MODE=simulated so the
+ * deterministic call machine runs hermetically even on a configured account.
+ */
 export function isSnapserveLive(): boolean {
+  if ((process.env.SNAPSERVE_MODE || "").trim().toLowerCase() === "simulated") {
+    return false;
+  }
   return snapserveApiKey() !== null;
 }
 

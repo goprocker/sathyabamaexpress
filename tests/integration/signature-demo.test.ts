@@ -2,6 +2,13 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import os from "node:os";
+
+// TRD §12.1.5 + §15.2: tests must run the deterministic fallbacks so the
+// judge pipeline is hermetic (no real Snapserve dials, no live OpenAI calls)
+// even when provider keys exist in the environment.
+process.env.SNAPSERVE_MODE = "simulated";
+process.env.OPENAI_API_KEY = "";
+
 import { HouseholdStore } from "@household/db";
 import { buildApiApp } from "../../apps/api/src/app.js";
 
