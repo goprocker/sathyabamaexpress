@@ -41,7 +41,7 @@ export function LandingPage() {
     <div id="top" className="landing min-h-dvh">
       <a
         href="#story"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-button focus:bg-text-primary focus:px-4 focus:py-2 focus:text-white"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-button focus:bg-accent focus:px-4 focus:py-2 focus:text-white"
       >
         Skip to story
       </a>

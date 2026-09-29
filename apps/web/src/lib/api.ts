@@ -24,7 +24,7 @@ import type {
   StateTransitionItem,
 } from "../mocks/types";
 
-const API_BASE =
+export const API_BASE =
   typeof import.meta !== "undefined" &&
   typeof import.meta.env?.VITE_API_BASE_URL === "string" &&
   import.meta.env.VITE_API_BASE_URL.length > 0

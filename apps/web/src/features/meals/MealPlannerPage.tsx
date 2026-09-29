@@ -1,288 +1,226 @@
-// Meal planner + simulation (Design System §14)
-// Required quantities shown here come from the API simulation —
-// the frontend never computes business-critical arithmetic (AGENTS.md §6).
-import { useEffect, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
-import { Check, Minus, Plus } from "lucide-react";
-import { PageHeader } from "@/components/layout/PageHeader";
+import { useState } from "react";
 import {
-  Button,
-  Card,
-  Divider,
-  EmptyState,
-  ErrorState,
-  ListSkeleton,
-  SectionHeader,
-  StatusPill,
-  type PillTone,
-} from "@/components/ui/primitives";
-import {
-  useCommitMeal,
-  useConsumeMeal,
-  useRecipes,
-} from "@/hooks/queries";
-import { simulateMeal } from "@/lib/api";
-import { formatQuantity } from "@/lib/format";
-import type { MealSimulation, SimulationRowStatus } from "@/mocks/types";
+  CalendarDays,
+  Clock,
+  ChevronRight,
+  Plus,
+  AlertCircle,
+  Check,
+  Sparkles,
+} from "lucide-react";
+import { QueryBoundary } from "@/components/ui/QueryBoundary";
+import { useKitchenSample, type KitchenSample } from "@/hooks/life";
+import type { MealPlan, WeeklyMealPlan } from "@/mocks/types";
 
-function rowStatusPill(s: SimulationRowStatus): { tone: PillTone; label: string } {
-  switch (s) {
-    case "MISSING":
-      return { tone: "danger", label: "Missing" };
-    case "LOW":
-      return { tone: "warning", label: "Short" };
-    case "EXPIRING":
-      return { tone: "warning", label: "Expiring" };
-    default:
-      return { tone: "accent", label: "Available" };
-  }
+function SlotIcon({ slot }: { slot: string }) {
+  const colors: Record<string, string> = {
+    Breakfast: "bg-[#FFF8E1] text-[#F57F17]",
+    Lunch: "bg-[#E8F5E9] text-[#2E7D32]",
+    Dinner: "bg-[#EDE7F6] text-[#5E35B1]",
+    Snack: "bg-[#FFF3E0] text-[#E65100]",
+  };
+  return (
+    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full tracking-[0.02em] ${colors[slot] ?? colors.Lunch}`}>
+      {slot}
+    </span>
+  );
 }
 
-export function MealPlannerPage() {
-  const recipes = useRecipes();
-  const commit = useCommitMeal();
-  const consume = useConsumeMeal();
-  const navigate = useNavigate();
-
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [servings, setServings] = useState(6);
-  const [simulation, setSimulation] = useState<MealSimulation | null>(null);
-  const [simulating, setSimulating] = useState(false);
-  const [committed, setCommitted] = useState(false);
-  const [committedMealPlanId, setCommittedMealPlanId] = useState<string>("mp_biryani_001");
-  const [cooked, setCooked] = useState(false);
-
-  const recipe = recipes.data?.find((r) => r.id === selectedId) ?? null;
-  const shortfallCount =
-    simulation?.rows.filter((r) => r.status === "MISSING" || r.status === "LOW").length ?? 0;
-
-  async function runSimulation(targetRecipeId = recipe?.id, targetServings = servings) {
-    if (!targetRecipeId) return;
-    setSimulating(true);
-    try {
-      const result = await simulateMeal(targetRecipeId, targetServings);
-      setSimulation(result);
-    } finally {
-      setSimulating(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!selectedId) return;
-    let cancelled = false;
-    setSimulating(true);
-    simulateMeal(selectedId, servings)
-      .then((result) => {
-        if (!cancelled) setSimulation(result);
-      })
-      .finally(() => {
-        if (!cancelled) setSimulating(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedId, servings]);
-
-  async function handleCommit() {
-    if (!recipe) return;
-    const res = await commit.mutateAsync({ recipeId: recipe.id, servings });
-    if (res.mealPlanId) setCommittedMealPlanId(res.mealPlanId);
-    setCommitted(true);
-  }
-
-  async function handleMarkCooked() {
-    await consume.mutateAsync(committedMealPlanId);
-    setCooked(true);
-  }
-
-  if (recipes.isError) {
-    return <ErrorState onRetry={() => void recipes.refetch()} />;
-  }
-
-  if (recipes.isPending) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Plan a meal" />
-        <ListSkeleton rows={4} />
-      </div>
-    );
-  }
-
-  // ── Step 3: committed confirmation ──────────────────────────────────────
-  if (committed && recipe) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Plan a meal" />
-        <div className="rounded-card border border-accent/25 bg-accent-subtle px-6 py-10 text-center">
-          <Check size={22} strokeWidth={2} className="mx-auto text-accent" />
-          <p className="mt-2 body-text font-medium">
-            {cooked
-              ? `${recipe.name} marked cooked — FEFO lots deducted`
-              : `${recipe.name} · ${servings} servings planned`}
-          </p>
-          <p className="mt-1 text-small text-text-tertiary">
-            {cooked
-              ? "Canonical kitchen inventory has been reconciled."
-              : "Ingredients are reserved in the canonical ledger and shortages have been rippled."}
-          </p>
-          <div className="mt-5 flex flex-wrap justify-center gap-2">
-            <Button variant="primary" onClick={() => void navigate({ to: "/ripple" })}>
-              View ripple
-            </Button>
-            <Button variant="secondary" onClick={() => void navigate({ to: "/actions" })}>
-              Review actions
-            </Button>
-            {!cooked && shortfallCount === 0 && (
-              <Button
-                variant="ghost"
-                disabled={consume.isPending}
-                onClick={() => void handleMarkCooked()}
-              >
-                {consume.isPending ? "Deducting…" : "Mark cooked (deduct inventory)"}
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Step 2: configure + simulate ────────────────────────────────────────
-  if (recipe) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Plan a meal" />
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section className="space-y-4">
-            <SectionHeader>{recipe.name}</SectionHeader>
-
-            <Card className="px-5 py-4">
-              <p className="text-meta">Servings</p>
-              <div className="mt-2 flex items-center gap-4">
-                <button
-                  aria-label="Decrease servings"
-                  onClick={() => setServings((s) => Math.max(1, s - 1))}
-                  className="flex size-11 cursor-pointer items-center justify-center rounded-button border border-border transition-colors duration-150 hover:bg-surface-subtle"
-                >
-                  <Minus size={16} strokeWidth={1.75} />
-                </button>
-                <span className="w-10 text-center text-[22px] font-medium tabular-nums">
-                  {servings}
-                </span>
-                <button
-                  aria-label="Increase servings"
-                  onClick={() => setServings((s) => Math.min(24, s + 1))}
-                  className="flex size-11 cursor-pointer items-center justify-center rounded-button border border-border transition-colors duration-150 hover:bg-surface-subtle"
-                >
-                  <Plus size={16} strokeWidth={1.75} />
-                </button>
-              </div>
-              <Divider />
-              <p className="py-2 text-small text-text-secondary">
-                Tomorrow · Dinner
-              </p>
-            </Card>
-
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => { setSelectedId(null); setSimulation(null); }}>
-                Change dish
-              </Button>
-              <Button variant="secondary" onClick={() => void runSimulation()} disabled={simulating}>
-                {simulating ? "Checking inventory…" : "Re-check inventory"}
-              </Button>
-            </div>
-          </section>
-
-          <section className="space-y-4">
-            <SectionHeader>Required ingredients (backend scaled)</SectionHeader>
-            <Card className="px-5 py-2">
-              {(simulation?.rows ?? []).map((row, idx) => (
-                <div key={row.itemId}>
-                  {idx > 0 && <Divider />}
-                  <div className="flex items-center justify-between py-2.5">
-                    <span className="body-text">{row.name}</span>
-                    <span className="text-small text-text-secondary tabular-nums">
-                      {formatQuantity(row.required, row.unit)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {!simulation && (
-                <p className="py-3 text-small text-text-tertiary">
-                  Calculating required quantities…
-                </p>
-              )}
-            </Card>
-
-            {simulation && (
-              <>
-                <SectionHeader>Inventory check</SectionHeader>
-                <Card className="px-5 py-2">
-                  {simulation.rows.map((row, idx) => {
-                    const pill = rowStatusPill(row.status);
-                    return (
-                      <div key={row.itemId}>
-                        {idx > 0 && <Divider />}
-                        <div className="flex items-center justify-between py-2.5">
-                          <div>
-                            <span className="body-text">{row.name}</span>
-                            {row.shortfall != null && (
-                              <span className="ml-2 text-small text-danger">
-                                {formatQuantity(row.shortfall, row.unit)} short
-                              </span>
-                            )}
-                          </div>
-                          <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </Card>
-
-                <div className="flex items-center justify-between gap-3">
-                  {shortfallCount > 0 ? (
-                    <p className="text-small text-text-secondary">
-                      {shortfallCount} ingredient{shortfallCount === 1 ? "" : "s"} need attention.
-                    </p>
-                  ) : (
-                    <p className="text-small text-accent">Everything's available.</p>
-                  )}
-                  <Button variant="primary" onClick={() => void handleCommit()} disabled={commit.isPending}>
-                    {commit.isPending ? "Planning…" : "Plan this meal"}
-                  </Button>
-                </div>
-              </>
-            )}
-          </section>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Step 1: pick a dish ─────────────────────────────────────────────────
+function MealCard({ meal }: { meal: MealPlan }) {
   return (
-    <div className="space-y-6">
-      <PageHeader title="Plan a meal" subtitle="Choose a dish to check what's needed." />
-      {recipes.data && recipes.data.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {recipes.data.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => setSelectedId(r.id)}
-              className="cursor-pointer rounded-card border border-border bg-surface px-5 py-4 text-left transition-colors duration-150 hover:border-border-strong"
-            >
-              <p className="body-text font-medium">{r.name}</p>
-              <p className="text-meta">{r.cuisine}</p>
-              <p className="mt-2 text-small text-text-tertiary">
-                {r.ingredients.length} ingredients
-              </p>
-            </button>
+    <div className="flex items-center gap-3 rounded-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] px-3.5 py-3 transition-all duration-[180ms] hover:border-[var(--color-border-strong)] hover:translate-y-[-1px]">
+      <span className="text-[22px]">{meal.emoji ?? "🍽️"}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="text-[13px] font-medium text-[var(--color-text-primary)] truncate">
+            {meal.recipeName}
+          </p>
+          <SlotIcon slot={meal.slot} />
+        </div>
+        <div className="flex items-center gap-3 mt-0.5 text-[11px] text-[var(--color-text-tertiary)]">
+          <span>{meal.servings} servings</span>
+          {meal.prepTime && (
+            <span className="flex items-center gap-0.5">
+              <Clock size={10} /> {meal.prepTime}m
+            </span>
+          )}
+        </div>
+      </div>
+      <div>
+        {meal.status === "completed" ? (
+          <span className="w-6 h-6 rounded-full bg-[var(--color-success-bg)] flex items-center justify-center">
+            <Check size={13} className="text-[var(--color-success)]" />
+          </span>
+        ) : meal.status === "confirmed" ? (
+          <span className="w-6 h-6 rounded-full bg-[var(--color-info-subtle)] flex items-center justify-center">
+            <Check size={13} className="text-[var(--color-info)]" />
+          </span>
+        ) : (
+          <ChevronRight size={16} className="text-[var(--color-text-tertiary)]" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DayColumn({ day }: { day: WeeklyMealPlan }) {
+  const isToday = day.isToday;
+
+  return (
+    <div className={`space-y-2 ${isToday ? "" : ""}`}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <p className={`text-[14px] font-semibold tracking-[-0.01em] ${
+            isToday ? "text-[var(--color-accent)]" : "text-[var(--color-text-primary)]"
+          }`}>
+            {day.day}
+          </p>
+          {isToday && (
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[var(--color-accent)] text-white">
+              Today
+            </span>
+          )}
+        </div>
+        <span className="text-[11px] text-[var(--color-text-tertiary)]">
+          {day.date.split("-").reverse().slice(0, 2).join("/")}
+        </span>
+      </div>
+
+      {day.cookingTimeAvailable && (
+        <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-tertiary)] mb-1">
+          <Clock size={11} />
+          <span>{day.cookingTimeAvailable}m available</span>
+          {day.cookingTimeAvailable <= 30 && (
+            <span className="flex items-center gap-0.5 text-[var(--color-warning)]">
+              <AlertCircle size={10} /> Limited time
+            </span>
+          )}
+        </div>
+      )}
+
+      {day.meals.length > 0 ? (
+        <div className="space-y-1.5">
+          {day.meals.map((meal) => (
+            <MealCard key={meal.id} meal={meal} />
           ))}
         </div>
       ) : (
-        <EmptyState title="No recipes yet." hint="Recipes will appear here once seeded." />
+        <div className="rounded-[10px] border border-dashed border-[var(--color-border)] bg-[var(--color-surface-subtle)]/50 px-4 py-6 text-center">
+          <p className="text-[12px] text-[var(--color-text-tertiary)]">No meals planned</p>
+          <button className="mt-2 text-[12px] font-medium text-[var(--color-accent)] flex items-center gap-1 mx-auto hover:gap-1.5 transition-all duration-[150ms]">
+            <Plus size={13} /> Add meal
+          </button>
+        </div>
       )}
     </div>
   );
 }
 
+export function MealPlannerPage() {
+  const sample = useKitchenSample();
+  return <QueryBoundary query={sample}>{(data) => <MealPlannerView sample={data} />}</QueryBoundary>;
+}
+
+function MealPlannerView({ sample }: { sample: KitchenSample }) {
+  const weeklyMealPlan = sample.days;
+  const [view, setView] = useState<"week" | "day">("week");
+  const totalMeals = weeklyMealPlan.reduce((s, d) => s + d.meals.length, 0);
+  const completedMeals = weeklyMealPlan.reduce(
+    (s, d) => s + d.meals.filter((m) => m.status === "completed").length,
+    0,
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <header className="fade-in-up stagger-1">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <CalendarDays size={18} className="text-[var(--color-accent)]" />
+              <h1 className="page-title">Meal Planner</h1>
+            </div>
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              {completedMeals} of {totalMeals} meals completed this week
+            </p>
+          </div>
+          <div className="flex gap-1 bg-[var(--color-surface-subtle)] rounded-[8px] p-0.5">
+            <button
+              onClick={() => setView("week")}
+              className={`px-3 py-1.5 rounded-[6px] text-[12px] font-medium transition-all duration-[150ms] ${
+                view === "week"
+                  ? "bg-[var(--color-surface)] text-[var(--color-text-primary)] shadow-sm"
+                  : "text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+              }`}
+            >
+              Week
+            </button>
+            <button
+              onClick={() => setView("day")}
+              className={`px-3 py-1.5 rounded-[6px] text-[12px] font-medium transition-all duration-[150ms] ${
+                view === "day"
+                  ? "bg-[var(--color-surface)] text-[var(--color-text-primary)] shadow-sm"
+                  : "text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+              }`}
+            >
+              Today
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* AI suggestion */}
+      <div className="card-base p-4 flex items-start gap-3 border-[var(--color-accent-subtle)] bg-[var(--color-accent-subtle)]/30 fade-in-up stagger-2">
+        <Sparkles size={18} className="text-[var(--color-accent)] shrink-0 mt-0.5" />
+        <div>
+          <p className="text-[13px] font-medium text-[var(--color-accent)]">
+            AI Suggestion
+          </p>
+          <p className="text-[12px] text-[var(--color-text-secondary)] mt-0.5">
+            Thursday has only 20 min cooking time. Masala Dosa (25 min) is a great quick breakfast option.
+            Your pantry has all ingredients in stock.
+          </p>
+        </div>
+      </div>
+
+      {/* Weekly progress */}
+      <div className="flex gap-1 fade-in-up stagger-3">
+        {weeklyMealPlan.map((day) => {
+          const total = Math.max(day.meals.length, 1);
+          const done = day.meals.filter((m) => m.status === "completed").length;
+          return (
+            <div key={day.day} className="flex-1 flex flex-col items-center gap-1">
+              <div className="w-full h-1.5 rounded-full bg-[var(--color-surface-subtle)] overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${(done / total) * 100}%`,
+                    backgroundColor: day.isToday ? "var(--color-accent)" : "var(--color-border-strong)",
+                  }}
+                />
+              </div>
+              <span className={`text-[10px] ${day.isToday ? "font-medium text-[var(--color-accent)]" : "text-[var(--color-text-tertiary)]"}`}>
+                {day.day.slice(0, 3)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Meal Plan */}
+      {view === "week" ? (
+        <div className="space-y-6 fade-in-up stagger-4">
+          {weeklyMealPlan.map((day) => (
+            <DayColumn key={day.day} day={day} />
+          ))}
+        </div>
+      ) : (
+        <div className="fade-in-up stagger-4">
+          {weeklyMealPlan.filter((d) => d.isToday).map((day) => (
+            <DayColumn key={day.day} day={day} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

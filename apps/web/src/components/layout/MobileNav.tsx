@@ -1,117 +1,38 @@
-import { useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
-import {
-  Activity,
-  ChefHat,
-  ClipboardList,
-  Home,
-  Mic,
-  PencilLine,
-  Plus,
-  ScanLine,
-  UtensilsCrossed,
-  X,
-} from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { CalendarDays, ChefHat, FileCheck2, Home, Sparkles, type LucideIcon } from "lucide-react";
 
-const tabs = [
+const tabs: Array<{ to: string; label: string; icon: LucideIcon; exact?: boolean; also?: string[] }> = [
   { to: "/", label: "Home", icon: Home, exact: true },
-  { to: "/inventory", label: "Kitchen", icon: ChefHat, exact: false },
-  { to: "/activity", label: "Activity", icon: Activity, exact: false },
-  { to: "/settings", label: "You", icon: ClipboardList, exact: true },
-] as const;
+  { to: "/timeline", label: "Timeline", icon: CalendarDays },
+  { to: "/assistant", label: "Ask", icon: Sparkles },
+  { to: "/kitchen", label: "Kitchen", icon: ChefHat },
+  { to: "/obligations", label: "Admin", icon: FileCheck2 },
+];
 
-type Tab = (typeof tabs)[number];
+const base =
+  "flex min-h-[52px] min-w-[56px] flex-col items-center justify-center gap-0.5 rounded-full px-2.5 transition-all duration-[180ms]";
 
 export function MobileNav() {
   return (
     <nav
-      aria-label="Mobile"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
+      aria-label="Bottom navigation"
+      className="glass fixed inset-x-4 bottom-4 z-50 flex items-center justify-around rounded-full p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
     >
-      <div className="relative mx-auto grid max-w-md grid-cols-5 items-center px-2 pt-1">
-        <TabLink tab={tabs[0]} />
-        <TabLink tab={tabs[1]} />
-        <AddButton />
-        <TabLink tab={tabs[2]} />
-        <TabLink tab={tabs[3]} />
-      </div>
+      {tabs.map(({ to, label, icon: Icon, exact }) => (
+        <Link
+          key={to}
+          to={to}
+          activeOptions={{ exact }}
+          className={base}
+          inactiveProps={{ className: `${base} text-text-secondary` }}
+          activeProps={{
+            className: `${base} bg-accent text-accent-text shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_6px_14px_-6px_rgba(46,107,62,0.7)]`,
+          }}
+        >
+          <Icon size={20} strokeWidth={1.5} />
+          <span className="text-[10px] tracking-[0.01em]">{label}</span>
+        </Link>
+      ))}
     </nav>
-  );
-}
-
-function TabLink({ tab }: { tab: Tab | undefined }) {
-  if (!tab) return <span aria-hidden />;
-  const Icon = tab.icon;
-  return (
-    <Link
-      to={tab.to}
-      activeOptions={{ exact: tab.exact }}
-      activeProps={{
-        className:
-          "flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-[6px] py-1 text-meta text-accent",
-      }}
-      inactiveProps={{
-        className:
-          "flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-[6px] py-1 text-meta text-text-tertiary",
-      }}
-    >
-      <Icon size={20} strokeWidth={1.75} />
-      {tab.label}
-    </Link>
-  );
-}
-
-function AddButton() {
-  const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
-
-  const actions = [
-    { to: "/voice", label: "Speak", icon: Mic },
-    { to: "/receipt", label: "Scan receipt", icon: ScanLine },
-    { to: "/meals", label: "Plan meal", icon: UtensilsCrossed },
-    { to: "/inventory", label: "Add manually", icon: PencilLine },
-  ] as const;
-
-  return (
-    <>
-      <button
-        aria-label={open ? "Close add menu" : "Add"}
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="mx-auto flex size-12 items-center justify-center rounded-full bg-accent text-white shadow-none transition-transform duration-150 active:scale-95"
-      >
-        {open ? <X size={20} strokeWidth={2} /> : <Plus size={20} strokeWidth={2} />}
-      </button>
-
-      {open && (
-        <>
-          <button
-            aria-label="Close add menu"
-            className="fixed inset-0 z-40 bg-black/20"
-            onClick={() => setOpen(false)}
-          />
-          <div
-            role="menu"
-            aria-label="Quick actions"
-            className="fixed inset-x-0 bottom-16 z-50 mx-auto w-[calc(100%-32px)] max-w-sm overflow-hidden rounded-dialog border border-border bg-surface p-1.5"
-          >
-            {actions.map(({ to, label, icon: Icon }) => (
-              <button
-                key={label}
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  void navigate({ to });
-                }}
-                className="flex min-h-[44px] w-full items-center gap-3 rounded-[6px] px-3 text-small text-text-primary transition-colors duration-150 hover:bg-surface-subtle"
-              >
-                <Icon size={18} strokeWidth={1.75} className="text-text-secondary" />
-                {label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </>
   );
 }

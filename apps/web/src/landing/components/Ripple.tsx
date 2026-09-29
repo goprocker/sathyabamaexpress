@@ -66,7 +66,7 @@ export function RippleSignature() {
             </text>
             <line x1="200" y1="58" x2="200" y2="88" className="ripple-line-alert" />
           </svg>
-          <div className="mx-auto max-w-md rounded-button bg-text-primary p-4 text-center">
+          <div className="mx-auto max-w-md rounded-button bg-accent p-4 text-center">
             <p className="text-small font-medium text-white">Purchase needed</p>
             <p className="text-small text-white/70">800 g chicken · before tomorrow dinner</p>
           </div>
@@ -156,7 +156,7 @@ export function RippleInteractive() {
                   aria-pressed={servings === n}
                   className={`h-11 min-w-[44px] rounded-[6px] border px-3 text-small ${
                     servings === n
-                      ? "border-text-primary bg-text-primary text-white"
+                      ? "border-accent bg-accent text-white"
                       : "border-border hover:border-border-strong"
                   }`}
                 >

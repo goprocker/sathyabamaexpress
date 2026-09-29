@@ -69,7 +69,7 @@ export function FinalCTA() {
         <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link
             to="/"
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-button bg-text-primary px-6 text-small font-medium text-white transition-colors hover:bg-black/80"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-button bg-accent px-6 text-small font-medium text-white transition-colors hover:bg-black/80"
           >
             Explore the product
             <ArrowRight size={16} strokeWidth={1.75} aria-hidden />

@@ -43,3 +43,9 @@ export function isExpiringSoon(iso: string | null | undefined, withinDays = 3): 
   const threshold = Date.now() + withinDays * 24 * 60 * 60 * 1000;
   return target.getTime() <= threshold;
 }
+
+export function ago(minutes: number): string {
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1440) return `${Math.round(minutes / 60)}h ago`;
+  return `${Math.round(minutes / 1440)}d ago`;
+}

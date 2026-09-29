@@ -113,7 +113,7 @@ export function VoiceAgent() {
           <button
             type="button"
             onClick={() => setPlayed(true)}
-            className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-button bg-text-primary px-4 text-small font-medium text-white"
+            className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-button bg-accent px-4 text-small font-medium text-white"
           >
             <Mic size={16} strokeWidth={1.75} aria-hidden />
             {played ? "Understood — see the parse" : "Hear how it's understood"}
@@ -227,7 +227,7 @@ export function ExecutionSection() {
             type="button"
             onClick={advance}
             className={`mt-6 inline-flex min-h-[44px] items-center justify-center rounded-button px-4 text-small font-medium text-white ${
-              state === "done" ? "bg-text-primary" : "bg-accent hover:bg-[#2A563B]"
+              state === "done" ? "bg-accent" : "bg-accent hover:bg-[#2A563B]"
             }`}
           >
             {state === "review" ? "Review & approve" : state === "done" ? "Reset demo" : "Working…"}
