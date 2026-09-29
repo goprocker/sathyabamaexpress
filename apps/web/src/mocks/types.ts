@@ -1,4 +1,5 @@
-// View models mirroring packages/contracts schemas.
+// SmartKitchen AI — Mock types for the kitchen management application.
+// These mirror packages/contracts schemas and will be served by the real API later.
 
 export type InventoryStatus = "available" | "low" | "expiring" | "critical";
 
@@ -27,6 +28,9 @@ export interface InventoryItem {
   lowThreshold: number;
   expiry?: string;
   dailyConsumption: number;
+  daysRemaining?: number;
+  price?: number;
+  emoji?: string;
   // 3-Tier Canonical Ledger fields
   formattedOnHand?: string;
   formattedReserved?: string;
@@ -54,6 +58,13 @@ export interface Recipe {
   name: string;
   cuisine: string;
   servings: number;
+  prepTime?: number;
+  cookTime?: number;
+  difficulty?: "easy" | "medium" | "hard";
+  tags?: string[];
+  emoji?: string;
+  canMakeNow?: boolean;
+  missingCount?: number;
   ingredients: RecipeIngredient[];
 }
 
@@ -65,8 +76,10 @@ export interface MealPlan {
   recipeName: string;
   servings: number;
   date: string;
-  slot: "Breakfast" | "Lunch" | "Dinner";
+  slot: "Breakfast" | "Lunch" | "Dinner" | "Snack";
   status: MealStatus;
+  prepTime?: number;
+  emoji?: string;
 }
 
 export type SimulationRowStatus = "AVAILABLE" | "LOW" | "MISSING" | "EXPIRING";
@@ -332,4 +345,46 @@ export interface ObligationsSummary {
   subscriptions: { active: number; monthlyCost: string };
   bills: { dueSoon: number; amount: string };
   appointments: { upcoming: number };
+}
+
+// ── SmartKitchen AI specific types ────────────────────────────────────────
+
+export interface CartItem {
+  id: string;
+  itemId: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  estimatedPrice: number;
+  source: "auto" | "manual" | "recipe";
+  reason?: string;
+  platform?: "zepto" | "blinkit" | "manual";
+}
+
+export interface BudgetData {
+  monthlyBudget: number;
+  spent: number;
+  remaining: number;
+  projectedSpend: number;
+  weeklyBreakdown: Array<{
+    week: string;
+    spent: number;
+    budget: number;
+  }>;
+}
+
+export interface FamilyMember {
+  id: string;
+  name: string;
+  role: "admin" | "member";
+  avatar?: string;
+  lastActive?: string;
+}
+
+export interface WeeklyMealPlan {
+  day: string;
+  date: string;
+  meals: MealPlan[];
+  isToday?: boolean;
+  cookingTimeAvailable?: number;
 }

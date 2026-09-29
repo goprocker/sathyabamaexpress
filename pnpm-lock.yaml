@@ -31,6 +31,9 @@ importers:
       '@household/integrations':
         specifier: workspace:*
         version: link:../../packages/integrations
+      '@household/life':
+        specifier: workspace:*
+        version: link:../../packages/life
       '@household/tools':
         specifier: workspace:*
         version: link:../../packages/tools
@@ -62,6 +65,9 @@ importers:
       '@household/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@household/life':
+        specifier: workspace:*
+        version: link:../../packages/life
       '@tanstack/react-query':
         specifier: ^5.90.2
         version: 5.104.0(react@19.3.0)
@@ -163,6 +169,8 @@ importers:
       '@household/contracts':
         specifier: workspace:*
         version: link:../contracts
+
+  packages/life: {}
 
   packages/tools:
     dependencies:

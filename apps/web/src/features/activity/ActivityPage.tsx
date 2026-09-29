@@ -17,7 +17,7 @@ const kindDot: Record<string, string> = {
   receipt: "bg-text-tertiary",
   action: "bg-warning",
   alert: "bg-danger",
-  agent: "bg-text-primary",
+  agent: "bg-accent",
 };
 
 export function ActivityPage() {

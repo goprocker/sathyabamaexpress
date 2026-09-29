@@ -983,3 +983,47 @@ export type CounterfactualSimulationResult = z.infer<
   typeof CounterfactualSimulationResultSchema
 >;
 
+
+// ============================================================================
+// LIVORA AI: life intelligence, mobility, circular living, notifications
+// ============================================================================
+
+export const LifeDecisionInputSchema = z.object({
+  suggestionId: z.string().min(1).max(120),
+  kind: z.string().min(1).max(60),
+  decision: z.enum(["accepted", "rejected"]),
+});
+export type LifeDecisionInput = z.infer<typeof LifeDecisionInputSchema>;
+
+export const AssistantAskInputSchema = z.object({
+  question: z.string().trim().min(1).max(500),
+});
+export type AssistantAskInput = z.infer<typeof AssistantAskInputSchema>;
+
+export const FlagInputSchema = z.object({ enabled: z.boolean() });
+export type FlagInput = z.infer<typeof FlagInputSchema>;
+
+export const NotificationsReadInputSchema = z.object({
+  ids: z.union([z.array(z.string().max(60)).max(200), z.literal("all")]),
+});
+export type NotificationsReadInput = z.infer<typeof NotificationsReadInputSchema>;
+
+export const WardrobeAddInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  category: z.enum(["Ethnic", "Formal", "Casual", "Accessory"]),
+  occasion: z.string().trim().min(1).max(30),
+});
+export type WardrobeAddInput = z.infer<typeof WardrobeAddInputSchema>;
+
+export const ListingAddInputSchema = z.object({
+  title: z.string().trim().min(1).max(100),
+  type: z.enum(["rent", "lend", "exchange"]),
+  perDay: z.number().min(0).max(100000).default(0),
+});
+export type ListingAddInput = z.infer<typeof ListingAddInputSchema>;
+
+export const ImpactFactorsInputSchema = z.object({
+  garment: z.number().min(0).max(20),
+  household: z.number().min(0).max(20),
+});
+export type ImpactFactorsInput = z.infer<typeof ImpactFactorsInputSchema>;

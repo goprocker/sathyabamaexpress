@@ -36,6 +36,7 @@ import {
   runReceiptExtractionWorkflow,
   runVoiceIntakeWorkflow,
 } from "@household/agents";
+import { registerLifeRoutes } from "./life-routes.js";
 import {
   isSnapserveLive,
   resolveSnapserveAgent,
@@ -192,6 +193,22 @@ export function buildApiApp(customStore?: HouseholdStore): FastifyInstance {
     reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
     return payload;
   });
+
+  // Request validation failures (Zod) are client errors, not server faults.
+  app.setErrorHandler((error, _request, reply) => {
+    const issues = (error as { issues?: Array<{ path: unknown[]; message: string }> }).issues;
+    if (Array.isArray(issues)) {
+      return reply.status(400).send({
+        error: "Invalid request",
+        issues: issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+      });
+    }
+    const status = (error as { statusCode?: number }).statusCode ?? 500;
+    return reply.status(status).send({ error: status >= 500 ? "Internal Server Error" : (error as Error).message });
+  });
+
+  // LIVORA AI modules: life intelligence, mobility, circular, notifications.
+  const life = registerLifeRoutes(app, store);
 
   // ==========================================================================
   // 1. Health, Readiness, State Diff & Realtime SSE Stream
@@ -458,6 +475,7 @@ export function buildApiApp(customStore?: HouseholdStore): FastifyInstance {
     const householdId = body.householdId || "hh_demo_001";
     const mode = body.mode === "post-receipt" ? "post-receipt" : "pre-receipt";
     store.resetToCanonicalSeed(mode);
+    life.reset();
     const resetTimestamp = new Date().toISOString();
     broadcastRealtime("DEMO_RESET", { householdId, resetTimestamp });
     return {

@@ -13,18 +13,18 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const buttonVariants: Record<ButtonVariant, string> = {
   primary:
-    "bg-accent text-white hover:bg-accent/90 disabled:bg-accent/40 disabled:text-white/70",
+    "bg-accent text-accent-text shadow-[inset_0_1px_0_rgba(255,255,255,0.28),0_6px_16px_-6px_rgba(46,107,62,0.6)] hover:bg-accent-hover disabled:bg-accent/40 disabled:shadow-none disabled:text-accent-text/70",
   secondary:
-    "border border-border bg-surface text-text-primary hover:border-border-strong hover:bg-surface-subtle disabled:text-text-tertiary",
+    "glass text-text-primary hover:bg-surface-elevated disabled:text-text-tertiary",
   ghost:
-    "text-text-secondary hover:bg-surface-subtle hover:text-text-primary disabled:text-text-tertiary",
+    "text-text-secondary hover:bg-surface hover:text-text-primary disabled:text-text-tertiary",
   danger:
     "border border-danger/30 bg-danger-subtle text-danger hover:border-danger/50",
 };
 
 const buttonSizes: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-small gap-1.5 rounded-[6px]",
-  md: "h-10 px-4 text-small gap-2 rounded-button font-medium",
+  sm: "h-9 px-3.5 text-small gap-1.5 rounded-full",
+  md: "h-12 px-6 text-[15px] gap-2 rounded-full",
 };
 
 export function Button({
@@ -53,7 +53,7 @@ export function IconButton({ icon: Icon, label, className = "", ...props }: Icon
     <button
       aria-label={label}
       title={label}
-      className={`inline-flex size-10 cursor-pointer items-center justify-center rounded-button text-text-secondary transition-colors duration-150 hover:bg-surface-subtle hover:text-text-primary ${className}`}
+      className={`inline-flex size-11 cursor-pointer items-center justify-center rounded-full text-text-secondary transition-colors duration-150 hover:bg-surface hover:text-text-primary ${className}`}
       {...props}
     >
       <Icon size={18} strokeWidth={1.75} />
@@ -66,7 +66,7 @@ export function IconButton({ icon: Icon, label, className = "", ...props }: Icon
 export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`h-10 w-full rounded-button border border-border bg-surface px-3 text-small text-text-primary placeholder:text-text-tertiary transition-colors duration-150 focus:border-accent focus:outline-none ${className}`}
+      className={`glass h-12 w-full rounded-full px-5 text-[15px] text-text-primary placeholder:text-text-tertiary transition-colors duration-150 focus:border-accent focus:bg-surface-elevated focus:outline-none ${className}`}
       {...props}
     />
   );
@@ -77,8 +77,8 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
 export type PillTone = "neutral" | "accent" | "warning" | "danger" | "muted";
 
 const pillTones: Record<PillTone, string> = {
-  neutral: "bg-surface-subtle text-text-secondary border-border",
-  accent: "bg-accent-subtle text-accent border-accent/20",
+  neutral: "bg-surface text-text-secondary border-transparent",
+  accent: "bg-accent-subtle text-accent border-transparent",
   warning: "bg-warning-subtle text-warning border-warning/20",
   danger: "bg-danger-subtle text-danger border-danger/20",
   muted: "bg-transparent text-text-tertiary border-transparent",
@@ -93,7 +93,7 @@ export function StatusPill({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-[4px] border px-1.5 py-0.5 text-meta ${pillTones[tone]}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-meta ${pillTones[tone]}`}
     >
       {children}
     </span>
@@ -131,7 +131,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div className={`rounded-card border border-border bg-surface ${className}`}>
+    <div className={`glass rounded-card ${className}`}>
       {children}
     </div>
   );
@@ -180,7 +180,7 @@ export function EmptyState({
   hint?: string;
 }) {
   return (
-    <div className="rounded-card border border-dashed border-border-strong px-6 py-10 text-center">
+    <div className="rounded-card border border-dashed border-border-strong bg-surface-subtle px-6 py-12 text-center">
       <p className="body-text text-text-primary">{title}</p>
       {hint && <p className="mt-1 text-small text-text-tertiary">{hint}</p>}
     </div>
@@ -213,7 +213,7 @@ export function Skeleton({ className = "" }: { className?: string }) {
   return (
     <div
       aria-hidden
-      className={`animate-pulse rounded-[4px] bg-surface-subtle ${className}`}
+      className={`animate-pulse rounded-[8px] bg-surface ${className}`}
     />
   );
 }

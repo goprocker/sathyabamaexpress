@@ -21,6 +21,9 @@ import {
   type PillTone,
 } from "@/components/ui/primitives";
 import { useObligations } from "@/hooks/queries";
+import { useOverview } from "@/hooks/life";
+import { dayLabel } from "@household/life";
+import { TriangleAlert } from "lucide-react";
 import { relativeDay } from "@/lib/format";
 import type {
   Obligation,
@@ -57,6 +60,9 @@ const statusMeta: Record<ObligationStatus, { tone: PillTone; label: string }> = 
 export function ObligationsPage() {
   const { data, isPending, isError, refetch } = useObligations();
   const [filter, setFilter] = useState<"all" | "attention">("all");
+  const overview = useOverview();
+  const collisions = overview.data?.collisions ?? [];
+  const today = overview.data?.today ?? "";
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -88,6 +94,7 @@ export function ObligationsPage() {
   return (
     <div className="space-y-8">
       <PageHeader
+        eyebrow="Life Administration AI"
         title="Obligations"
         subtitle="Documents, vehicle, bills, subscriptions and appointments — everything with a date attached."
         action={
@@ -112,6 +119,35 @@ export function ObligationsPage() {
           </div>
         }
       />
+
+      {collisions.length > 0 && (
+        <section aria-label="Deadline collision detector" className="space-y-3">
+          {collisions.map((c) => (
+            <div key={c.id} className="card-base flex items-start gap-4 p-5">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-[16px] bg-tint-coral-subtle text-tint-coral">
+                <TriangleAlert size={20} strokeWidth={1.5} />
+              </span>
+              <div className="min-w-0">
+                <p className="mono-label">Deadline collision detector</p>
+                <p className="text-[20px] leading-tight tracking-[-0.03em]">
+                  {c.events.map((e) => e.title).join(" · ")}
+                </p>
+                <p className="mt-1 text-[14px] text-text-secondary">
+                  {dayLabel(c.start, today)} to {dayLabel(c.end, today)}
+                </p>
+                {c.advice.map((a) => (
+                  <p key={a} className="mt-1.5 text-[15px]">
+                    {a}
+                  </p>
+                ))}
+                <Link to="/timeline" className="mt-3 inline-block text-[14px] text-accent underline-offset-4 hover:underline">
+                  Review on timeline
+                </Link>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
 
       {filtered.length === 0 ? (
         <p className="py-8 text-center text-small text-text-tertiary">

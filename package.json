@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "pnpm --filter @household/web dev",
     "dev:api": "pnpm --filter @household/api dev",
+    "dev:all": "pnpm --parallel --filter @household/api --filter @household/web dev",
     "start:api": "pnpm --filter @household/api start",
     "build": "pnpm --filter @household/web build",
     "preview": "pnpm --filter @household/web preview",

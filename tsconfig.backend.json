@@ -17,7 +17,8 @@
       "@household/domain": ["packages/domain/src/index.ts"],
       "@household/tools": ["packages/tools/src/index.ts"],
       "@household/integrations": ["packages/integrations/src/index.ts"],
-      "@household/agents": ["packages/agents/src/index.ts"]
+      "@household/agents": ["packages/agents/src/index.ts"],
+      "@household/life": ["packages/life/src/index.ts"]
     }
   },
   "include": [
@@ -27,6 +28,7 @@
     "packages/tools/src/**/*.ts",
     "packages/integrations/src/**/*.ts",
     "packages/agents/src/**/*.ts",
+    "packages/life/src/**/*.ts",
     "apps/api/src/**/*.ts",
     "tests/**/*.ts"
   ],

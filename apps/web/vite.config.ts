@@ -11,18 +11,32 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "Household Intelligence",
-        short_name: "Household",
+        name: "LIVORA AI",
+        short_name: "LIVORA",
         description:
-          "A calm household workspace that tracks inventory, meals and obligations.",
-        theme_color: "#FAFAF8",
-        background_color: "#FAFAF8",
+          "A personal life intelligence app for household, obligations, mobility and reuse.",
+        theme_color: "#F3F2E8",
+        background_color: "#F3F2E8",
         display: "standalone",
         start_url: "/",
-        icons: [],
+        icons: [
+          { src: "/brand/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/brand/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+        ],
       },
     }),
   ],
+  // Dev and preview forward /api to the Fastify API (apps/api, default :4000).
+  server: {
+    proxy: {
+      "/api": { target: process.env.VITE_DEV_API_TARGET ?? "http://127.0.0.1:4000", changeOrigin: true },
+    },
+  },
+  preview: {
+    proxy: {
+      "/api": { target: process.env.VITE_DEV_API_TARGET ?? "http://127.0.0.1:4000", changeOrigin: true },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),

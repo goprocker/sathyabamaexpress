@@ -6,18 +6,18 @@
 }
 
 .landing-display {
-  font-size: clamp(2.75rem, 6vw, 5rem);
-  line-height: 1.02;
-  font-weight: 600;
-  letter-spacing: -0.03em;
+  font-size: clamp(3rem, 9vw, 7.5rem);
+  line-height: 0.96;
+  font-weight: 400;
+  letter-spacing: -0.05em;
   text-wrap: balance;
 }
 
 .landing-section-title {
   font-size: clamp(2rem, 4.2vw, 3.25rem);
-  line-height: 1.08;
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  line-height: 1.02;
+  font-weight: 400;
+  letter-spacing: -0.04em;
   text-wrap: balance;
 }
 
@@ -29,11 +29,11 @@
 }
 
 .landing-eyebrow {
-  font-size: 0.6875rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
   line-height: 1rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 400;
+  letter-spacing: 0;
   color: var(--color-text-tertiary);
 }
 
