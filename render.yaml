@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: household-intelligence
+    runtime: node
+    plan: starter
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @household/web build
+    startCommand: pnpm --filter @household/api start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: HOST
+        value: 0.0.0.0
+      - key: APPROVAL_TOKEN_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: SNAPSERVE_API_KEY
+        sync: false
+      - key: SNAPSERVE_AGENT_ID
+        sync: false

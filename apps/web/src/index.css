@@ -1,0 +1,113 @@
+@import "@fontsource/geist-sans/400.css";
+@import "@fontsource/geist-sans/500.css";
+@import "@fontsource/geist-sans/600.css";
+
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans:
+    "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  --color-background: #fafaf8;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f5f5f2;
+
+  --color-text-primary: #171717;
+  --color-text-secondary: #6b6b67;
+  --color-text-tertiary: #969690;
+
+  --color-border: #e7e7e2;
+  --color-border-strong: #d8d8d1;
+
+  --color-accent: #356b4a;
+  --color-accent-subtle: #eaf2ec;
+
+  --color-warning: #9a6b16;
+  --color-warning-subtle: #f8f0dc;
+
+  --color-danger: #a5443a;
+  --color-danger-subtle: #f8e9e7;
+
+  --color-success: #356b4a;
+  --color-success-subtle: #eaf2ec;
+
+  --radius-control: 6px;
+  --radius-button: 8px;
+  --radius-card: 10px;
+  --radius-dialog: 12px;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 23px;
+  }
+
+  ::selection {
+    background: var(--color-accent-subtle);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility page-title {
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+@utility section-title {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+@utility body-text {
+  font-size: 15px;
+  line-height: 23px;
+}
+
+@utility text-small {
+  font-size: 13px;
+  line-height: 19px;
+}
+
+@utility text-meta {
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--color-text-secondary);
+}
+
+@utility eyebrow {
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}

@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@household/contracts": ["packages/contracts/src/index.ts"],
+      "@household/db": ["packages/db/src/index.ts"],
+      "@household/domain": ["packages/domain/src/index.ts"],
+      "@household/tools": ["packages/tools/src/index.ts"],
+      "@household/integrations": ["packages/integrations/src/index.ts"],
+      "@household/agents": ["packages/agents/src/index.ts"]
+    }
+  },
+  "include": [
+    "packages/contracts/src/**/*.ts",
+    "packages/db/src/**/*.ts",
+    "packages/domain/src/**/*.ts",
+    "packages/tools/src/**/*.ts",
+    "packages/integrations/src/**/*.ts",
+    "packages/agents/src/**/*.ts",
+    "apps/api/src/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "apps/web"
+  ]
+}

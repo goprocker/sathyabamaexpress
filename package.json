@@ -1,0 +1,23 @@
+{
+  "name": "household-intelligence",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.34.6",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @household/web dev",
+    "dev:api": "pnpm --filter @household/api dev",
+    "start:api": "pnpm --filter @household/api start",
+    "build": "pnpm --filter @household/web build",
+    "preview": "pnpm --filter @household/web preview",
+    "test": "pnpm --filter @household/api exec tsx --test ../../tests/unit/*.test.ts ../../tests/integration/*.test.ts ../../tests/evals/*.test.ts",
+    "test:unit": "pnpm --filter @household/api exec tsx --test ../../tests/unit/*.test.ts",
+    "test:integration": "pnpm --filter @household/api exec tsx --test ../../tests/integration/*.test.ts",
+    "test:evals": "pnpm --filter @household/api exec tsx --test ../../tests/evals/*.test.ts",
+    "typecheck": "pnpm -r typecheck",
+    "typecheck:backend": "pnpm --filter @household/api exec tsc -p ../../tsconfig.backend.json --noEmit",
+    "lint": "pnpm -r lint"
+  }
+}

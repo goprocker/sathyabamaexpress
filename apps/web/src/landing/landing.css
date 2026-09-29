@@ -1,0 +1,133 @@
+/* Landing-only styles. Product app styles live in index.css. */
+
+.landing {
+  background: var(--color-background);
+  color: var(--color-text-primary);
+}
+
+.landing-display {
+  font-size: clamp(2.75rem, 6vw, 5rem);
+  line-height: 1.02;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+
+.landing-section-title {
+  font-size: clamp(2rem, 4.2vw, 3.25rem);
+  line-height: 1.08;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.landing-lede {
+  font-size: clamp(1.125rem, 1.8vw, 1.375rem);
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  text-wrap: pretty;
+}
+
+.landing-eyebrow {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.landing-container {
+  width: 100%;
+  max-width: 76rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .landing-container {
+    padding-inline: 2.5rem;
+  }
+}
+
+/* Scroll story */
+.story-tall {
+  height: 700vh;
+}
+
+@media (max-width: 767px) {
+  .story-tall {
+    height: 420vh;
+  }
+}
+
+.story-sticky {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+}
+
+.story-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.story-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(23, 23, 23, 0.28);
+}
+
+.story-copy {
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.story-progress {
+  transform-origin: left center;
+}
+
+/* Ripple graph lines */
+.ripple-line {
+  stroke: var(--color-border-strong);
+  stroke-width: 1.5;
+}
+
+.ripple-line-alert {
+  stroke: var(--color-warning);
+  stroke-width: 1.5;
+}
+
+/* Subtle reveal */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 400ms ease, transform 400ms ease;
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .story-copy {
+    transition: none;
+  }
+  .story-tall {
+    height: auto;
+  }
+  .story-sticky {
+    position: static;
+    height: auto;
+  }
+}

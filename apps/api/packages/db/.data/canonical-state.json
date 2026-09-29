@@ -1,0 +1,682 @@
+{
+  "households": [
+    {
+      "id": "hh_demo_001",
+      "name": "Sai's Household",
+      "timezone": "Asia/Kolkata",
+      "createdAt": "2026-09-29T05:36:53.095Z"
+    }
+  ],
+  "members": [
+    {
+      "id": "usr_sai_001",
+      "householdId": "hh_demo_001",
+      "name": "Sai Charan",
+      "role": "ADMIN",
+      "phoneE164": "+919840112233"
+    },
+    {
+      "id": "usr_ananya_002",
+      "householdId": "hh_demo_001",
+      "name": "Ananya",
+      "role": "MEMBER",
+      "phoneE164": "+919840445566"
+    }
+  ],
+  "vendors": [
+    {
+      "id": "vnd_kaveri_fresh",
+      "householdId": "hh_demo_001",
+      "name": "Kaveri Fresh Mart & Meats",
+      "phoneE164": "+919840000000",
+      "categories": [
+        "protein",
+        "dairy",
+        "produce",
+        "grain"
+      ],
+      "snapserveAgentId": 101,
+      "isPreferred": true
+    }
+  ],
+  "resources": [
+    {
+      "id": "res_rice",
+      "householdId": "hh_demo_001",
+      "canonicalName": "Basmati Rice",
+      "aliases": [
+        "rice",
+        "basmati",
+        "biryani rice",
+        "அரிசி",
+        "arisi"
+      ],
+      "category": "grain",
+      "baseUnit": "g",
+      "displayUnit": "kg",
+      "onHandQuantity": 5000,
+      "reservedQuantity": 0,
+      "incomingQuantity": 0,
+      "safetyThreshold": 1000,
+      "avgDailyBurn": 350,
+      "nearestExpiryAt": "2027-03-28T05:36:53.095Z",
+      "updatedAt": "2026-09-29T05:36:53.095Z",
+      "netAvailableQuantity": 5000,
+      "deficitQuantity": 0,
+      "status": "SURPLUS",
+      "formattedOnHand": "5.0 kg",
+      "formattedReserved": "0.0 kg",
+      "formattedIncoming": "0.0 kg",
+      "formattedNetAvailable": "5.0 kg",
+      "formattedDeficit": "0.0 kg",
+      "daysUntilDepletion": 14.3
+    },
+    {
+      "id": "res_chicken",
+      "householdId": "hh_demo_001",
+      "canonicalName": "Chicken",
+      "aliases": [
+        "chicken curry cut",
+        "kozhi",
+        "கோழி",
+        "fresh chicken",
+        "meat"
+      ],
+      "category": "protein",
+      "baseUnit": "g",
+      "displayUnit": "g",
+      "onHandQuantity": 700,
+      "reservedQuantity": 0,
+      "incomingQuantity": 0,
+      "safetyThreshold": 500,
+      "avgDailyBurn": 250,
+      "nearestExpiryAt": "2026-10-01T05:36:53.095Z",
+      "updatedAt": "2026-09-29T05:36:53.095Z",
+      "netAvailableQuantity": 700,
+      "deficitQuantity": 0,
+      "status": "AVAILABLE",
+      "formattedOnHand": "700 g",
+      "formattedReserved": "0 g",
+      "formattedIncoming": "0 g",
+      "formattedNetAvailable": "700 g",
+      "formattedDeficit": "0 g",
+      "daysUntilDepletion": 2.8
+    },
+    {
+      "id": "res_onion",
+      "householdId": "hh_demo_001",
+      "canonicalName": "Onion",
+      "aliases": [
+        "vengayam",
+        "வெங்காயம்",
+        "red onion",
+        "big onion"
+      ],
+      "category": "produce",
+      "baseUnit": "g",
+      "displayUnit": "kg",
+      "onHandQuantity": 2000,
+      "reservedQuantity": 0,
+      "incomingQuantity": 0,
+      "safetyThreshold": 500,
+      "avgDailyBurn": 200,
+      "nearestExpiryAt": "2026-10-13T05:36:53.095Z",
+      "updatedAt": "2026-09-29T05:36:53.095Z",
+      "netAvailableQuantity": 2000,
+      "deficitQuantity": 0,
+      "status": "AVAILABLE",
+      "formattedOnHand": "2.0 kg",
+      "formattedReserved": "0.0 kg",
+      "formattedIncoming": "0.0 kg",
+      "formattedNetAvailable": "2.0 kg",
+      "formattedDeficit": "0.0 kg",
+      "daysUntilDepletion": 10
+    },
+    {
+      "id": "res_curd",
+      "householdId": "hh_demo_001",
+      "canonicalName": "Curd",
+      "aliases": [
+        "yogurt",
+        "thayir",
+        "தயிர்",
+        "curd pouch",
+        "dahi"
+      ],
+      "category": "dairy",
+      "baseUnit": "ml",
+      "displayUnit": "ml",
+      "onHandQuantity": 200,
+      "reservedQuantity": 0,
+      "incomingQuantity": 0,
+      "safetyThreshold": 200,
+      "avgDailyBurn": 150,
+      "nearestExpiryAt": "2026-10-03T05:36:53.095Z",
+      "updatedAt": "2026-09-29T05:36:53.095Z",
+      "netAvailableQuantity": 200,
+      "deficitQuantity": 0,
+      "status": "LOW",
+      "formattedOnHand": "200 ml",
+      "formattedReserved": "0 ml",
+      "formattedIncoming": "0 ml",
+      "formattedNetAvailable": "200 ml",
+      "formattedDeficit": "0 ml",
+      "daysUntilDepletion": 1.3
+    },
+    {
+      "id": "res_milk",
+      "householdId": "hh_demo_001",
+      "canonicalName": "Milk",
+      "aliases": [
+        "paal",
+        "பால்",
+        "fresh milk",
+        "toned milk"
+      ],
+      "category": "dairy",
+      "baseUnit": "ml",
+      "displayUnit": "L",
+      "onHandQuantity": 400,
+      "reservedQuantity": 0,
+      "incomingQuantity": 0,
+      "safetyThreshold": 500,
+      "avgDailyBurn": 500,
+      "nearestExpiryAt": "2026-09-30T05:36:53.095Z",
+      "updatedAt": "2026-09-29T05:36:53.095Z",
+      "netAvailableQuantity": 400,
+      "deficitQuantity": 0,
+      "status": "EXPIRING",
+      "formattedOnHand": "0.4 L",
+      "formattedReserved": "0.0 L",
+      "formattedIncoming": "0.0 L",
+      "formattedNetAvailable": "0.4 L",
+      "formattedDeficit": "0.0 L",
+      "daysUntilDepletion": 0.8
+    },
+    {
+      "id": "res_tomato",
+      "householdId": "hh_demo_001",
+      "canonicalName": "Tomato",
+      "aliases": [
+        "thakkali",
+        "தக்காளி",
+        "fresh tomato"
+      ],
+      "category": "produce",
+      "baseUnit": "g",
+      "displayUnit": "kg",
+      "onHandQuantity": 1000,
+      "reservedQuantity": 0,
+      "incomingQuantity": 0,
+      "safetyThreshold": 300,
+      "avgDailyBurn": 150,
+      "nearestExpiryAt": "2026-10-03T05:36:53.095Z",
+      "updatedAt": "2026-09-29T05:36:53.095Z",
+      "netAvailableQuantity": 1000,
+      "deficitQuantity": 0,
+      "status": "AVAILABLE",
+      "formattedOnHand": "1.0 kg",
+      "formattedReserved": "0.0 kg",
+      "formattedIncoming": "0.0 kg",
+      "formattedNetAvailable": "1.0 kg",
+      "formattedDeficit": "0.0 kg",
+      "daysUntilDepletion": 6.7
+    },
+    {
+      "id": "res_dal",
+      "householdId": "hh_demo_001",
+      "canonicalName": "Toor Dal",
+      "aliases": [
+        "dal",
+        "paruppu",
+        "பருப்பு",
+        "lentils"
+      ],
+      "category": "grain",
+      "baseUnit": "g",
+      "displayUnit": "g",
+      "onHandQuantity": 850,
+      "reservedQuantity": 0,
+      "incomingQuantity": 0,
+      "safetyThreshold": 300,
+      "avgDailyBurn": 100,
+      "nearestExpiryAt": "2027-03-28T05:36:53.095Z",
+      "updatedAt": "2026-09-29T05:36:53.095Z",
+      "netAvailableQuantity": 850,
+      "deficitQuantity": 0,
+      "status": "AVAILABLE",
+      "formattedOnHand": "850 g",
+      "formattedReserved": "0 g",
+      "formattedIncoming": "0 g",
+      "formattedNetAvailable": "850 g",
+      "formattedDeficit": "0 g",
+      "daysUntilDepletion": 8.5
+    },
+    {
+      "id": "res_ghee",
+      "householdId": "hh_demo_001",
+      "canonicalName": "Ghee",
+      "aliases": [
+        "nei",
+        "நெய்",
+        "clarified butter"
+      ],
+      "category": "dairy",
+      "baseUnit": "ml",
+      "displayUnit": "ml",
+      "onHandQuantity": 500,
+      "reservedQuantity": 0,
+      "incomingQuantity": 0,
+      "safetyThreshold": 100,
+      "avgDailyBurn": 30,
+      "nearestExpiryAt": "2027-03-28T05:36:53.095Z",
+      "updatedAt": "2026-09-29T05:36:53.095Z",
+      "netAvailableQuantity": 500,
+      "deficitQuantity": 0,
+      "status": "SURPLUS",
+      "formattedOnHand": "500 ml",
+      "formattedReserved": "0 ml",
+      "formattedIncoming": "0 ml",
+      "formattedNetAvailable": "500 ml",
+      "formattedDeficit": "0 ml",
+      "daysUntilDepletion": 16.7
+    }
+  ],
+  "lots": [
+    {
+      "id": "lot_seed_rice",
+      "resourceId": "res_rice",
+      "quantityRemaining": 5000,
+      "unitCostInr": 450,
+      "purchasedAt": "2026-09-29T05:36:53.095Z",
+      "expiresAt": "2027-03-28T05:36:53.095Z",
+      "sourceEventId": "evt_seed_receipt_001",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "lot_seed_chicken",
+      "resourceId": "res_chicken",
+      "quantityRemaining": 700,
+      "unitCostInr": 210,
+      "purchasedAt": "2026-09-29T05:36:53.095Z",
+      "expiresAt": "2026-10-01T05:36:53.095Z",
+      "sourceEventId": "evt_seed_receipt_001",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "lot_seed_onion",
+      "resourceId": "res_onion",
+      "quantityRemaining": 2000,
+      "unitCostInr": 90,
+      "purchasedAt": "2026-09-29T05:36:53.095Z",
+      "expiresAt": "2026-10-13T05:36:53.095Z",
+      "sourceEventId": "evt_seed_receipt_001",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "lot_seed_curd",
+      "resourceId": "res_curd",
+      "quantityRemaining": 200,
+      "unitCostInr": 30,
+      "purchasedAt": "2026-09-29T05:36:53.095Z",
+      "expiresAt": "2026-10-03T05:36:53.095Z",
+      "sourceEventId": "evt_seed_receipt_001",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "lot_seed_milk",
+      "resourceId": "res_milk",
+      "quantityRemaining": 400,
+      "unitCostInr": 28,
+      "purchasedAt": "2026-09-29T05:36:53.095Z",
+      "expiresAt": "2026-09-30T05:36:53.095Z",
+      "sourceEventId": "evt_seed_initial",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "lot_seed_tomato",
+      "resourceId": "res_tomato",
+      "quantityRemaining": 1000,
+      "unitCostInr": 40,
+      "purchasedAt": "2026-09-29T05:36:53.095Z",
+      "expiresAt": "2026-10-03T05:36:53.095Z",
+      "sourceEventId": "evt_seed_initial",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "lot_seed_dal",
+      "resourceId": "res_dal",
+      "quantityRemaining": 850,
+      "unitCostInr": 140,
+      "purchasedAt": "2026-09-29T05:36:53.095Z",
+      "expiresAt": "2027-03-28T05:36:53.095Z",
+      "sourceEventId": "evt_seed_initial",
+      "status": "ACTIVE"
+    },
+    {
+      "id": "lot_seed_ghee",
+      "resourceId": "res_ghee",
+      "quantityRemaining": 500,
+      "unitCostInr": 320,
+      "purchasedAt": "2026-09-29T05:36:53.095Z",
+      "expiresAt": "2027-03-28T05:36:53.095Z",
+      "sourceEventId": "evt_seed_initial",
+      "status": "ACTIVE"
+    }
+  ],
+  "receiptUploads": [],
+  "recipes": [
+    {
+      "id": "rcp_chicken_biryani",
+      "householdId": "hh_demo_001",
+      "name": "Chicken Biryani",
+      "aliases": [
+        "biryani",
+        "kozhi biryani",
+        "chicken biriyani",
+        "பிரியாணி",
+        "dum biryani"
+      ],
+      "defaultServings": 6,
+      "ingredients": [
+        {
+          "id": "ri_biryani_rice",
+          "recipeId": "rcp_chicken_biryani",
+          "resourceId": "res_rice",
+          "resourceName": "Basmati Rice",
+          "qtyPerServing": 200,
+          "baseUnit": "g",
+          "displayUnit": "kg",
+          "isCritical": true
+        },
+        {
+          "id": "ri_biryani_chicken",
+          "recipeId": "rcp_chicken_biryani",
+          "resourceId": "res_chicken",
+          "resourceName": "Chicken",
+          "qtyPerServing": 250,
+          "baseUnit": "g",
+          "displayUnit": "g",
+          "isCritical": true
+        },
+        {
+          "id": "ri_biryani_onion",
+          "recipeId": "rcp_chicken_biryani",
+          "resourceId": "res_onion",
+          "resourceName": "Onion",
+          "qtyPerServing": 133.3333,
+          "baseUnit": "g",
+          "displayUnit": "g",
+          "isCritical": true
+        },
+        {
+          "id": "ri_biryani_curd",
+          "recipeId": "rcp_chicken_biryani",
+          "resourceId": "res_curd",
+          "resourceName": "Curd",
+          "qtyPerServing": 50,
+          "baseUnit": "ml",
+          "displayUnit": "ml",
+          "isCritical": true
+        }
+      ]
+    },
+    {
+      "id": "rcp_sambar_rice",
+      "householdId": "hh_demo_001",
+      "name": "South Indian Sambar & Rice",
+      "aliases": [
+        "sambar",
+        "sambar sadham",
+        "சாம்பார்",
+        "dal rice"
+      ],
+      "defaultServings": 4,
+      "ingredients": [
+        {
+          "id": "ri_sambar_dal",
+          "recipeId": "rcp_sambar_rice",
+          "resourceId": "res_dal",
+          "resourceName": "Toor Dal",
+          "qtyPerServing": 60,
+          "baseUnit": "g",
+          "displayUnit": "g",
+          "isCritical": true
+        },
+        {
+          "id": "ri_sambar_onion",
+          "recipeId": "rcp_sambar_rice",
+          "resourceId": "res_onion",
+          "resourceName": "Onion",
+          "qtyPerServing": 50,
+          "baseUnit": "g",
+          "displayUnit": "g",
+          "isCritical": true
+        },
+        {
+          "id": "ri_sambar_tomato",
+          "recipeId": "rcp_sambar_rice",
+          "resourceId": "res_tomato",
+          "resourceName": "Tomato",
+          "qtyPerServing": 75,
+          "baseUnit": "g",
+          "displayUnit": "g",
+          "isCritical": true
+        }
+      ]
+    },
+    {
+      "id": "rcp_chicken_curry",
+      "householdId": "hh_demo_001",
+      "name": "Chettinad Chicken Curry",
+      "aliases": [
+        "chicken curry",
+        "kozhi kulambu",
+        "chicken gravy"
+      ],
+      "defaultServings": 4,
+      "ingredients": [
+        {
+          "id": "ri_curry_chicken",
+          "recipeId": "rcp_chicken_curry",
+          "resourceId": "res_chicken",
+          "resourceName": "Chicken",
+          "qtyPerServing": 200,
+          "baseUnit": "g",
+          "displayUnit": "g",
+          "isCritical": true
+        },
+        {
+          "id": "ri_curry_onion",
+          "recipeId": "rcp_chicken_curry",
+          "resourceId": "res_onion",
+          "resourceName": "Onion",
+          "qtyPerServing": 100,
+          "baseUnit": "g",
+          "displayUnit": "g",
+          "isCritical": true
+        },
+        {
+          "id": "ri_curry_tomato",
+          "recipeId": "rcp_chicken_curry",
+          "resourceId": "res_tomato",
+          "resourceName": "Tomato",
+          "qtyPerServing": 100,
+          "baseUnit": "g",
+          "displayUnit": "g",
+          "isCritical": true
+        }
+      ]
+    }
+  ],
+  "mealPlans": [],
+  "events": [
+    {
+      "id": "evt_seed_receipt_001",
+      "householdId": "hh_demo_001",
+      "idempotencyKey": "seed_receipt_001",
+      "type": "PURCHASE_RECORDED",
+      "source": "receipt",
+      "confidence": 0.96,
+      "payload": {
+        "vendorName": "Kaveri Fresh Mart & Meats",
+        "itemsCount": 4,
+        "summary": "Basmati Rice 5 kg, Chicken 700 g, Onion 2 kg, Curd 200 ml"
+      },
+      "createdAt": "2026-09-29T05:36:53.095Z"
+    }
+  ],
+  "relationships": [
+    {
+      "id": "rel_biryani_rice",
+      "householdId": "hh_demo_001",
+      "sourceType": "recipe",
+      "sourceId": "rcp_chicken_biryani",
+      "relation": "consumes",
+      "targetType": "resource",
+      "targetId": "res_rice"
+    },
+    {
+      "id": "rel_biryani_chicken",
+      "householdId": "hh_demo_001",
+      "sourceType": "recipe",
+      "sourceId": "rcp_chicken_biryani",
+      "relation": "consumes",
+      "targetType": "resource",
+      "targetId": "res_chicken"
+    },
+    {
+      "id": "rel_biryani_onion",
+      "householdId": "hh_demo_001",
+      "sourceType": "recipe",
+      "sourceId": "rcp_chicken_biryani",
+      "relation": "consumes",
+      "targetType": "resource",
+      "targetId": "res_onion"
+    },
+    {
+      "id": "rel_biryani_curd",
+      "householdId": "hh_demo_001",
+      "sourceType": "recipe",
+      "sourceId": "rcp_chicken_biryani",
+      "relation": "consumes",
+      "targetType": "resource",
+      "targetId": "res_curd"
+    },
+    {
+      "id": "rel_car_insurance",
+      "householdId": "hh_demo_001",
+      "sourceType": "vehicle",
+      "sourceId": "veh_tn01ab1234",
+      "relation": "depends_on",
+      "targetType": "obligation",
+      "targetId": "obl_vehicle_insurance"
+    }
+  ],
+  "obligations": [
+    {
+      "id": "obl_vehicle_insurance",
+      "householdId": "hh_demo_001",
+      "category": "vehicle",
+      "title": "Vehicle Insurance Renewal (TN-01-AB-1234)",
+      "subtitle": "Comprehensive motor policy expires in 5 days",
+      "dueDate": "2026-10-04T05:36:53.095Z",
+      "daysUntilDue": 5,
+      "amountInr": 6450,
+      "status": "DUE_SOON",
+      "dependentEntity": "Family Car (TN-01-AB-1234)",
+      "conflictDescription": "Blocks scheduled weekend highway drive to Pondicherry in 6 days",
+      "sourceEventId": "evt_seed_obligation_001"
+    },
+    {
+      "id": "obl_tneb_electricity",
+      "householdId": "hh_demo_001",
+      "category": "utility",
+      "title": "TNEB Bi-Monthly Electricity Bill",
+      "subtitle": "Consumer #09-241-008 · Auto-detected from statement",
+      "dueDate": "2026-10-13T05:36:53.095Z",
+      "daysUntilDue": 14,
+      "amountInr": 1840,
+      "status": "UPCOMING"
+    }
+  ],
+  "forecasts": [
+    {
+      "id": "frc_milk_expiry",
+      "householdId": "hh_demo_001",
+      "targetType": "resource",
+      "targetId": "res_milk",
+      "targetName": "Milk",
+      "riskType": "EXPIRY_RISK",
+      "severity": "MEDIUM",
+      "predictedDate": "2026-09-30T05:36:53.095Z",
+      "daysRemaining": 1,
+      "headline": "Milk · 400 ml expiring tomorrow",
+      "explanation": "Lot #lot_seed_milk (400 ml) expires within 24 hours. Use for morning filter coffee or curd setting.",
+      "whyEvidence": {
+        "id": "why_milk_expiry",
+        "resourceId": "res_milk",
+        "resourceName": "Milk",
+        "headline": "Milk (400 ml) expires tomorrow",
+        "triggerEventLabel": "Lot Expiry Check · Active Lot #lot_seed_milk",
+        "triggerTimestamp": "2026-09-29T05:36:53.095Z",
+        "requiredDisplay": "Use 400 ml before tomorrow",
+        "onHandDisplay": "400 ml",
+        "reservedOtherDisplay": "0 ml",
+        "incomingDisplay": "0 ml",
+        "deficitDisplay": "0 ml (Expiry Risk)",
+        "proposedResolution": "Consume in morning tea/coffee or set homemade curd tonight",
+        "sources": [
+          "Confirmed inventory lot #lot_seed_milk",
+          "Dairy shelf-life policy (48h)"
+        ]
+      },
+      "updatedAt": "2026-09-29T05:36:53.095Z"
+    },
+    {
+      "id": "frc_vehicle_compliance",
+      "householdId": "hh_demo_001",
+      "targetType": "obligation",
+      "targetId": "obl_vehicle_insurance",
+      "targetName": "Vehicle Insurance (TN-01-AB-1234)",
+      "riskType": "COMPLIANCE_RISK",
+      "severity": "HIGH",
+      "predictedDate": "2026-10-04T05:36:53.095Z",
+      "daysRemaining": 5,
+      "headline": "Car insurance expires 1 day before planned family trip",
+      "explanation": "Policy expires in 5 days, conflicting with the weekend Pondicherry highway drive in 6 days.",
+      "updatedAt": "2026-09-29T05:36:53.095Z"
+    }
+  ],
+  "actions": [],
+  "outcomes": [],
+  "rippleGraphs": {},
+  "agentRuns": [],
+  "timeline": [
+    {
+      "id": "tl_seed_002",
+      "householdId": "hh_demo_001",
+      "eventId": "evt_seed_receipt_001",
+      "timestamp": "2026-09-29T05:36:53.095Z",
+      "timeFormatted": "09:43",
+      "title": "Inventory updated",
+      "description": "Basmati Rice 5.0 kg, Chicken 700 g, Onion 2.0 kg, Curd 200 ml available",
+      "category": "inventory",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "tl_seed_001",
+      "householdId": "hh_demo_001",
+      "eventId": "evt_seed_receipt_001",
+      "timestamp": "2026-09-29T05:36:53.095Z",
+      "timeFormatted": "09:42",
+      "title": "Grocery receipt processed",
+      "description": "4 items detected from Kaveri Fresh Mart & Meats",
+      "category": "receipt",
+      "status": "INFO"
+    }
+  ],
+  "auditLogs": [],
+  "approvalTokens": {},
+  "idempotencyCache": {}
+}

@@ -1,0 +1,342 @@
+// Canonical PostgreSQL + Supabase Prisma Schema
+// Household & Personal Obligation Intelligence
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Household {
+  id        String   @id @default(cuid())
+  name      String
+  timezone  String   @default("Asia/Kolkata")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  members        Member[]
+  vendors        Vendor[]
+  resources      Resource[]
+  receiptUploads ReceiptUpload[]
+  recipes        Recipe[]
+  mealPlans      MealPlan[]
+  events         Event[]
+  relationships  Relationship[]
+  obligations    Obligation[]
+  forecasts      Forecast[]
+  actions        Action[]
+  agentRuns      AgentRun[]
+
+  @@map("households")
+}
+
+model Member {
+  id          String   @id @default(cuid())
+  householdId String   @map("household_id")
+  name        String
+  role        String   @default("ADMIN")
+  phoneE164   String?  @map("phone_e164")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@map("members")
+}
+
+model Vendor {
+  id               String   @id @default(cuid())
+  householdId      String   @map("household_id")
+  name             String
+  phoneE164        String   @map("phone_e164")
+  categories       String[]
+  snapserveAgentId Int?     @map("snapserve_agent_id")
+  isPreferred      Boolean  @default(true) @map("is_preferred")
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  actions   Action[]
+
+  @@map("vendors")
+}
+
+model Resource {
+  id               String   @id @default(cuid())
+  householdId      String   @map("household_id")
+  canonicalName    String   @map("canonical_name")
+  aliases          String[]
+  category         String
+  baseUnit         String   @map("base_unit")
+  displayUnit      String   @map("display_unit")
+  onHandQuantity   Float    @default(0) @map("on_hand_quantity")
+  reservedQuantity Float    @default(0) @map("reserved_quantity")
+  incomingQuantity Float    @default(0) @map("incoming_quantity")
+  safetyThreshold  Float    @default(0) @map("safety_threshold")
+  avgDailyBurn     Float    @default(0) @map("avg_daily_burn")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  household         Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  lots              InventoryLot[]
+  recipeIngredients RecipeIngredient[]
+
+  @@map("resources")
+}
+
+model InventoryLot {
+  id                String    @id @default(cuid())
+  resourceId        String    @map("resource_id")
+  quantityRemaining Float     @map("quantity_remaining")
+  unitCostInr       Float?    @map("unit_cost_inr")
+  purchasedAt       DateTime  @default(now()) @map("purchased_at")
+  expiresAt         DateTime? @map("expires_at")
+  sourceEventId     String?   @map("source_event_id")
+  status            String    @default("ACTIVE")
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@map("inventory_lots")
+}
+
+model ReceiptUpload {
+  id             String    @id @default(cuid())
+  householdId    String    @map("household_id")
+  vendorName     String    @map("vendor_name")
+  imageUrl       String?   @map("image_url")
+  status         String    @default("EXTRACTED_PENDING_REVIEW")
+  extractedItems Json      @map("extracted_items")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  committedAt    DateTime? @map("committed_at")
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@map("receipt_uploads")
+}
+
+model Recipe {
+  id              String   @id @default(cuid())
+  householdId     String   @map("household_id")
+  name            String
+  aliases         String[]
+  defaultServings Int      @default(4) @map("default_servings")
+
+  household   Household          @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  ingredients RecipeIngredient[]
+  mealPlans   MealPlan[]
+
+  @@map("recipes")
+}
+
+model RecipeIngredient {
+  id            String  @id @default(cuid())
+  recipeId      String  @map("recipe_id")
+  resourceId    String  @map("resource_id")
+  qtyPerServing Float   @map("qty_per_serving")
+  isCritical    Boolean @default(true) @map("is_critical")
+
+  recipe   Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@map("recipe_ingredients")
+}
+
+model MealPlan {
+  id            String   @id @default(cuid())
+  householdId   String   @map("household_id")
+  recipeId      String   @map("recipe_id")
+  servings      Int
+  plannedDate   String   @map("planned_date")
+  mealSlot      String   @map("meal_slot")
+  status        String   @default("SIMULATED")
+  sourceEventId String   @map("source_event_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  recipe    Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@map("meal_plans")
+}
+
+model Event {
+  id             String   @id @default(cuid())
+  householdId    String   @map("household_id")
+  idempotencyKey String   @unique @map("idempotency_key")
+  type           String
+  source         String
+  confidence     Float    @default(1.0)
+  payload        Json
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  household Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  actions   Action[]
+  agentRuns AgentRun[]
+
+  @@map("events")
+}
+
+model Relationship {
+  id          String @id @default(cuid())
+  householdId String @map("household_id")
+  sourceType  String @map("source_type")
+  sourceId    String @map("source_id")
+  relation    String
+  targetType  String @map("target_type")
+  targetId    String @map("target_id")
+  metadata    Json?
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@map("relationships")
+}
+
+model Obligation {
+  id          String   @id @default(cuid())
+  householdId String   @map("household_id")
+  category    String
+  title       String
+  dueDate     DateTime @map("due_date")
+  amountInr   Float?   @map("amount_inr")
+  status      String   @default("DUE_SOON")
+  metadata    Json?
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@map("obligations")
+}
+
+model Forecast {
+  id            String   @id @default(cuid())
+  householdId   String   @map("household_id")
+  targetType    String   @map("target_type")
+  targetId      String   @map("target_id")
+  riskType      String   @map("risk_type")
+  severity      String
+  predictedDate DateTime @map("predicted_date")
+  explanation   String
+  details       Json
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@map("forecasts")
+}
+
+model Action {
+  id                 String    @id @default(cuid())
+  householdId        String    @map("household_id")
+  sourceEventId      String    @map("source_event_id")
+  type               String
+  status             String    @default("PENDING_APPROVAL")
+  title              String
+  reasonSummary      String    @map("reason_summary")
+  whyEvidence        Json      @map("why_evidence")
+  targetVendorId     String?   @map("target_vendor_id")
+  payload            Json
+  payloadHash        String    @map("payload_hash")
+  approvalRequired   Boolean   @default(true) @map("approval_required")
+  approvalTokenHash  String?   @map("approval_token_hash")
+  approvalExpiresAt  DateTime? @map("approval_expires_at")
+  approvedBy         String?   @map("approved_by")
+  approvedAt         DateTime? @map("approved_at")
+  externalCallId     String?   @map("external_call_id")
+  externalCallStatus String?   @map("external_call_status")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  household   Household       @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  sourceEvent Event           @relation(fields: [sourceEventId], references: [id], onDelete: Cascade)
+  vendor      Vendor?         @relation(fields: [targetVendorId], references: [id])
+  outcomes    ActionOutcome[]
+
+  @@map("actions")
+}
+
+model ActionOutcome {
+  id              String    @id @default(cuid())
+  actionId        String    @map("action_id")
+  status          String
+  transcript      String?
+  verifiedPayload Json?     @map("verified_payload")
+  reconciledAt    DateTime? @map("reconciled_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  action Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@map("action_outcomes")
+}
+
+model AgentRun {
+  id             String    @id @default(cuid())
+  householdId    String    @map("household_id")
+  triggerEventId String?   @map("trigger_event_id")
+  workflowType   String    @map("workflow_type")
+  status         String    @default("RUNNING")
+  input          Json
+  output         Json?
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+
+  household    Household   @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  triggerEvent Event?      @relation(fields: [triggerEventId], references: [id])
+  steps        AgentStep[]
+  toolCalls    ToolCall[]
+
+  @@map("agent_runs")
+}
+
+model AgentStep {
+  id        String   @id @default(cuid())
+  runId     String   @map("run_id")
+  stepIndex Int      @map("step_index")
+  agentName String   @map("agent_name")
+  action    String
+  status    String
+  reason    String
+  latencyMs Int      @map("latency_ms")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  run       AgentRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  toolCalls ToolCall[]
+
+  @@map("agent_steps")
+}
+
+model ToolCall {
+  id             String   @id @default(cuid())
+  runId          String   @map("run_id")
+  agentStepId    String   @map("agent_step_id")
+  toolName       String   @map("tool_name")
+  idempotencyKey String?  @map("idempotency_key")
+  input          Json
+  output         Json?
+  status         String
+  latencyMs      Int      @map("latency_ms")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  run       AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  agentStep AgentStep @relation(fields: [agentStepId], references: [id], onDelete: Cascade)
+
+  @@map("tool_calls")
+}
+
+model CanonicalStateSnapshot {
+  id        String   @id @default("primary")
+  revision  Int      @default(0)
+  data      Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("canonical_state_snapshots")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  householdId String   @map("household_id")
+  actor       String
+  operation   String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  beforeState Json?    @map("before_state")
+  afterState  Json?    @map("after_state")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("audit_log")
+}
