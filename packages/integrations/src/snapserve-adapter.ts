@@ -189,7 +189,30 @@ export async function resolveSnapserveAgent(
 
   try {
     const agents = await listSnapserveAgents();
-    const active = agents.find((a) => a.status === "active") ?? agents[0];
+    const activeAgents = agents.filter((a) => a.status === "active");
+
+    // Prefer the active agent that OWNS a phone number — i.e. the active one
+    // which has a number — so outbound calls show the account's own caller ID
+    // instead of a shared platform DID.
+    try {
+      const registry = await snapserveFetch<
+        Array<Record<string, unknown>> | { numbers?: Array<Record<string, unknown>> }
+      >(`/phone-numbers`);
+      const rows = Array.isArray(registry) ? registry : registry.numbers ?? [];
+      for (const row of rows) {
+        if (row.status && row.status !== "active") continue;
+        const owner = Number(row.assignedAgentId ?? row.agentId ?? NaN);
+        const ownerAgent = activeAgents.find((a) => a.id === owner);
+        if (ownerAgent) {
+          activeAgentCache = { agent: ownerAgent, resolvedAt: Date.now() };
+          return ownerAgent;
+        }
+      }
+    } catch {
+      // Registry unavailable — fall through to first active agent
+    }
+
+    const active = activeAgents[0] ?? agents[0];
     if (active && Number.isFinite(active.id)) {
       activeAgentCache = { agent: active, resolvedAt: Date.now() };
       return active;
@@ -361,6 +384,46 @@ function canonicalSpeaker(label: string): string {
   return "";
 }
 
+// Common ASR word-merges (speech-to-text often glues frequent pairs)
+const ASR_MERGES: Array<[RegExp, string]> = [
+  [/\bgoodmorning\b/gi, "good morning"],
+  [/\bgoodafternoon\b/gi, "good afternoon"],
+  [/\bgood evening\b/gi, "good evening"],
+  [/\bthankyou\b/gi, "thank you"],
+  [/\bthanls\b/gi, "thanks"],
+  [/\bletme\b/gi, "let me"],
+  [/\bcanyou\b/gi, "can you"],
+  [/\bcouldyou\b/gi, "could you"],
+  [/\bwouldyou\b/gi, "would you"],
+  [/\bthisis\b/gi, "this is"],
+  [/\bthat is all\b/gi, "that is all"],
+];
+
+/** Repairs glued ASR words and missing spaces around punctuation. */
+function repairAsrSpacing(line: string): string {
+  let out = line;
+  // 1. Split camel-glued pairs first so merge patterns can see word bounds
+  //    ("thisisBotty" → "thisis Botty" → "this is Botty")
+  out = out
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([a-zA-Z])(\d)/g, "$1 $2")
+    .replace(/(\d)([a-zA-Z])/g, "$1 $2");
+  // 2. Then fix common ASR merges
+  for (const [pattern, replacement] of ASR_MERGES) {
+    out = out.replace(pattern, replacement);
+  }
+  // 3. Tidy spacing/punctuation
+  out = out
+    .replace(/\s+([,.!?])/g, "$1")
+    .replace(/([,.!?])([A-Za-z])/g, "$1 $2")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  // Capitalize only the start of the line — mid-line capitalization breaks
+  // on abbreviations like "a.m. is"
+  out = out.replace(/^([a-z])/, (m, ch) => ch.toUpperCase());
+  return out;
+}
+
 /**
  * Normalizes a raw SnapServe transcript into a clean two-speaker script:
  *   Agent: "…"
@@ -410,11 +473,16 @@ export function humanizeCallTranscript(
     if (speakerMatch) {
       const speaker = canonicalSpeaker(speakerMatch[1]);
       if (speaker) {
-        formatted.push(`${speaker}: "${speakerMatch[2].replace(/^["“]|["”]$/g, "").trim()}"`);
+        const cleaned = repairAsrSpacing(
+          speakerMatch[2].replace(/^["“]|["”]$/g, "").trim()
+        );
+        formatted.push(`${speaker}: "${cleaned}"`);
         continue;
       }
     }
-    formatted.push(line.replace(/^["“]|["”]$/g, "").trim());
+    formatted.push(
+      repairAsrSpacing(line.replace(/^["“]|["”]$/g, "").trim())
+    );
   }
 
   // No speaker labels at all → treat as one agent turn + one vendor turn
@@ -433,6 +501,64 @@ export function humanizeCallTranscript(
   return (
     hasVendorLine ? cleaned : [...cleaned, `Vendor (${context.vendorName}): confirmed over call.`]
   ).join("\n");
+}
+
+/**
+ * Optional second polish pass: OpenAI cleans residual ASR glitches the regex
+ * pass can't fix ("letSaiknow" → "let Sai know", "Sai.s" → "Sai's") without
+ * touching meaning or the Agent/Vendor quote format. Returns null on any
+ * failure so callers fall back to the deterministic script.
+ */
+export async function polishTranscriptWithOpenAI(
+  script: string
+): Promise<string | null> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey || !script.trim()) return null;
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        temperature: 0,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You fix speech-to-text glitches in call transcripts. Rules: " +
+              "(1) Keep every line's exact format `Speaker: \"text\"` with Speakers Agent/Vendor. " +
+              "(2) Fix missing spaces, glued words, mangled punctuation, and wrong apostrophes (e.g. 'Sai.s' → 'Sai's', 'letSaiknow' → 'let Sai know'). " +
+              "(3) NEVER change wording, names, numbers, or meaning; do not add or remove lines; do not summarize. " +
+              "(4) Remove duplicated stutters like 'Thanks that is all Thanks that is all' to a single phrase. " +
+              "Return ONLY the corrected transcript text.",
+          },
+          { role: "user", content: script },
+        ],
+      }),
+      signal: AbortSignal.timeout(25_000),
+    });
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = data.choices?.[0]?.message?.content?.trim();
+    // Sanity: keep the polished script only if it preserved the line structure
+    if (
+      content &&
+      /^(Agent|Vendor):/m.test(content) &&
+      content.split(/\r?\n/).length >= script.split(/\r?\n/).length - 1
+    ) {
+      return content;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /** One clean sentence describing the call outcome — for timeline & UI. */
@@ -613,11 +739,14 @@ async function runLiveCall(
 
   // ── Humanize the transcript & outcome ───────────────────────────────────
   const greeting = `Vanakkam! Calling from Household Assistant for Sai's home. We need ${params.orderSummary} delivered tomorrow morning. Please confirm availability.`;
-  const transcript = humanizeCallTranscript(record.transcript ?? "", {
+  let transcript = humanizeCallTranscript(record.transcript ?? "", {
     vendorName: params.vendorName,
     orderSummary: params.orderSummary,
     greeting,
   });
+  // Second polish pass when OpenAI is available (regex pass is the fallback)
+  const polished = await polishTranscriptWithOpenAI(transcript);
+  if (polished) transcript = polished;
 
   const etaMatch = /\b(?:by|before|around)\s+([0-9]{1,2}(?::[0-9]{2})?\s*(?:am|pm|AM|PM)?(?:\s*tomorrow)?)/.exec(
     `${record.transcript ?? ""} ${record.callSummary ?? ""}`
