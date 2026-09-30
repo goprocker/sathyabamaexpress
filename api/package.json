@@ -1,0 +1,7 @@
+{
+  "name": "livora-api-function",
+  "private": true,
+  "scripts": {
+    "vercel-build": "node ../scripts/build-api.mjs"
+  }
+}

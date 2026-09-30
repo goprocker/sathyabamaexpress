@@ -30,3 +30,6 @@ Thumbs.db
 
 # Test coverage
 coverage/
+
+# Generated API bundle for Vercel (scripts/build-api.mjs)
+api/_server.cjs

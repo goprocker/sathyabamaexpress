@@ -25,7 +25,7 @@ export async function transcribeAudioWithSarvam(options: {
   }
   {
       const formData = new FormData();
-      const blob = new Blob([options.audioBuffer], {
+      const blob = new Blob([new Uint8Array(options.audioBuffer)], {
         type: options.mimeType || "audio/wav",
       });
       const mime = options.mimeType || "audio/wav";

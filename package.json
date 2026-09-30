@@ -19,9 +19,11 @@
     "test:evals": "pnpm --filter @household/api exec tsx --test ../../tests/evals/*.test.ts",
     "typecheck": "pnpm -r typecheck",
     "typecheck:backend": "pnpm --filter @household/api exec tsc -p ../../tsconfig.backend.json --noEmit",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "build:api": "node scripts/build-api.mjs"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "jose": "^5.10.0"
   }
 }

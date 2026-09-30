@@ -160,7 +160,18 @@ All routes live under `/api`.
 
 ## Deployment
 
-`vercel.json` builds the web app as a static site and serves the API through `apps/api/src/vercel-entry.ts`. Set the same environment variables in the Vercel project, including `DATABASE_URL` (serverless functions have no durable disk, so per-user data needs Postgres). Use a live Clerk instance and rotate any development keys before shipping.
+`vercel.json` builds the web app (`apps/web/dist`), serves the API through the single function `api/index.ts` (which loads `apps/api`), and rewrites every other path to the single-page app so deep links like `/recipes` work.
+
+**Vercel project settings that matter**
+
+- **Root Directory must be the repository root** (leave it empty). If it is set to `apps/web`, Vercel ignores this `vercel.json`: only the static site is deployed, there is no API, every `/api/*` call and every deep link returns Vercel's `NOT_FOUND`, and the app shows "Can't reach the server" after login.
+- Framework preset can be "Other" or "Vite". The build and output settings come from `vercel.json`.
+- Set the environment variables from the table above, including `DATABASE_URL` (serverless functions have no durable disk, so per-user data needs Postgres). `VITE_CLERK_PUBLISHABLE_KEY` is baked in at build time, so redeploy after changing it.
+- Use a live Clerk instance and rotate any development keys before shipping.
+
+**Check a deployment**
+
+Open `https://<your-app>.vercel.app/api/health`. You should see JSON with `config.auth: "enforced"`. A Vercel `NOT_FOUND` page means the API function is not deployed (check the Root Directory). A JSON message starting `The API failed to start` names the startup problem.
 
 ## Design
 
