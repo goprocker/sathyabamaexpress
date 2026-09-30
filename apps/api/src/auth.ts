@@ -103,7 +103,11 @@ export function registerAuth(app: FastifyInstance, verify: SessionVerifier, stor
   // changes are stored before it leaves.
   app.addHook("onSend", async (request, _reply, payload) => {
     const userId = userOf.get(request);
-    if (userId) await stores.flush(userId);
+    if (userId) {
+      // Wait for the save, but never let a slow database hold the response until the platform times out.
+      const saved = await Promise.race([stores.flush(userId).then(() => true), new Promise<false>((r) => setTimeout(() => r(false), 8_000))]);
+      if (!saved) console.error(`[auth] saving state for ${userId} took over 8s; responding anyway`);
+    }
     return payload;
   });
 }

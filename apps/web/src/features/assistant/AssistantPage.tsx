@@ -4,6 +4,7 @@ import { Check, ImagePlus, Mic, SendHorizontal, ShoppingCart, Sparkles, Undo2, X
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAddCartItem, useAsk, useAskByVoice, useRemoveCartItem, useSetCartQuantity, useStarters } from "@/hooks/life";
 import type { AssistantAction } from "@household/contracts";
+import { resizeImage } from "@/lib/image";
 import type { Answer } from "@/lib/lifeApi";
 
 interface Turn {
@@ -23,34 +24,6 @@ interface RecognitionLike {
   stop: () => void;
 }
 type RecognitionCtor = new () => RecognitionLike;
-
-/** Downscale to keep the upload small (the API caps request size) while staying legible for receipts. */
-function resizeImage(file: File, maxSide = 1280): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        URL.revokeObjectURL(url);
-        reject(new Error("Canvas unavailable"));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL("image/jpeg", 0.8));
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("Unreadable image"));
-    };
-    img.src = url;
-  });
-}
 
 function canRecord(): boolean {
   return typeof window !== "undefined" && typeof MediaRecorder !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);

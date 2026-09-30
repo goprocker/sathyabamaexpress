@@ -56,6 +56,8 @@ export const MemberSchema = z.object({
   dietaryPreferences: z.array(z.string()).optional(),
   phone: z.string().optional(),
   phoneE164: z.string().optional(),
+  age: z.number().int().min(0).max(120).optional(),
+  relation: z.string().optional(),
 });
 export type Member = z.infer<typeof MemberSchema>;
 
@@ -66,6 +68,10 @@ export const VendorSchema = z.object({
   category: z.string().optional(),
   categories: z.array(z.string()).optional(),
   phoneE164: z.string(),
+  /** What they supply (milk, poultry...), as chosen in Setup. */
+  kind: z.string().optional(),
+  location: z.string().optional(),
+  notes: z.string().optional(),
   snapserveAgentId: z.number().int().optional(),
   averageDeliveryMinutes: z.number().int().optional(),
   reliabilityScore: z.number().min(0).max(1).optional(),
@@ -1082,3 +1088,5 @@ export const ImpactFactorsInputSchema = z.object({
   household: z.number().min(0).max(20),
 });
 export type ImpactFactorsInput = z.infer<typeof ImpactFactorsInputSchema>;
+
+export * from "./profile.js";

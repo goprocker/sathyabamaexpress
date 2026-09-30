@@ -5,3 +5,5 @@ export * from "./engine.js";
 export * from "./service.js";
 export * from "./recipe-catalog.js";
 export * from "./cart.js";
+export * from "./vehicles.js";
+export * from "./profile.js";

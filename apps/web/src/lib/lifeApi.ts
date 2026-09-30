@@ -60,7 +60,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T | undefin
   const type = res.headers.get("content-type") ?? "";
   // The Vite proxy answers 404/5xx HTML (or empty) when the API process is down.
   if (!type.includes("application/json")) {
-    if (res.status >= 500 || res.status === 404) return undefined;
+    if (res.status >= 500 || res.status === 404) {
+      // Signed in, say what actually came back (a crash or timeout on the host) rather than "can't reach".
+      if (authEnabled) throw new ApiError(res.status, `The server returned an error (HTTP ${res.status}). Try again in a moment.`);
+      return undefined;
+    }
     throw new ApiError(res.status, res.statusText);
   }
   const body = (await res.json()) as T & { error?: string };

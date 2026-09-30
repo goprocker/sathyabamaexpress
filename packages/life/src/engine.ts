@@ -1,5 +1,6 @@
 // Life Intelligence Engine. Deterministic rules over the user's own data.
 // Agents reason, services calculate: nothing here calls an LLM.
+import type { Reminder } from "./vehicles.js";
 import type {
   LifeCartItem,
   LifeForecast,
@@ -104,6 +105,10 @@ export interface LifeInputs {
    * Signed-in households turn this off so they start with nothing but their own data.
    */
   samples?: boolean | undefined;
+  /** Nudges from the household profile (fuel, service, documents, bills). Shown as notifications, and fuel stops on the timeline. */
+  reminders?: Reminder[] | undefined;
+  /** A privacy-trimmed summary of the profile for the assistant: names, types and dates, never document numbers or phone numbers. */
+  household?: Record<string, unknown> | undefined;
 }
 
 function parseAmount(a?: string): number | undefined {
@@ -169,6 +174,20 @@ export function buildTimeline(input: LifeInputs, today = todayIso()): TimelineEv
       date: addDays(today, Math.max(0, f.horizonDays - 1)),
       weight: 3,
       href: "/cart",
+    });
+  }
+
+  for (const r of input.reminders ?? []) {
+    if (r.kind !== "fuel" || !r.dueOn) continue;
+    events.push({
+      id: `rem_${r.id}`,
+      module: "mobility",
+      kind: "vehicle",
+      title: r.title,
+      detail: r.detail,
+      date: r.dueOn,
+      weight: 2,
+      href: "/onboarding?tab=vehicles",
     });
   }
 

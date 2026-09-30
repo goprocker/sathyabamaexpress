@@ -263,6 +263,7 @@ export class LifeService {
         .filter((r) => r.canMakeNow)
         .map((r) => r.name)
         .slice(0, 20),
+      ...(inputs.household ? { household: inputs.household } : {}),
       // The mobility and wardrobe profiles are built-in samples; a household that
       // starts empty must not have the assistant quote them as its own.
       ...(sample
@@ -328,7 +329,18 @@ export class LifeService {
 
   /** The built-in sample notices, or none for a household that starts empty. */
   private activeNotices(): typeof notices {
-    return this.getInputs().samples === false ? [] : notices;
+    const inputs = this.getInputs();
+    // Reminders from the household profile (fuel, service, documents, bills) are real; the sample notices are not.
+    const fromProfile: typeof notices = (inputs.reminders ?? []).map((r) => ({
+      id: `rem:${r.id}`,
+      group: "Needs attention",
+      module: r.kind === "document" || r.kind === "bill" ? "admin" : "mobility",
+      title: r.title,
+      detail: r.detail,
+      minutesAgo: 0,
+      href: r.href,
+    }));
+    return [...(inputs.samples === false ? [] : notices), ...fromProfile];
   }
 
   notifications() {

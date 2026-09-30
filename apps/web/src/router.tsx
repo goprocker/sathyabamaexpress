@@ -25,7 +25,7 @@ import { ActivityPage } from "@/features/activity/ActivityPage";
 import { VoicePage } from "@/features/voice/VoicePage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { MembersPage } from "@/features/settings/MembersPage";
-import { OnboardingPage } from "@/features/onboarding/OnboardingPage";
+import { SetupPage } from "@/features/setup/SetupPage";
 import { DocsPage } from "@/docs/DocsPage";
 
 // Landing (GSAP + Lenis + video story) is code-split so the product
@@ -198,7 +198,10 @@ const membersRoute = createRoute({
 const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/onboarding",
-  component: () => shell(<OnboardingPage />),
+  component: () => shell(<SetupPage />),
+  validateSearch: (search: Record<string, unknown>): { tab?: string } => ({
+    tab: typeof search.tab === "string" ? search.tab : undefined,
+  }),
 });
 
 // /inventory and /pantry both show the kitchen Inventory section

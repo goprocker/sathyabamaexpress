@@ -113,7 +113,7 @@ export const navGroups: NavGroup[] = [
       { to: "/members", label: "Household", hint: "Members and sharing", icon: Users },
       { to: "/plans", label: "Plans", hint: "Free and Premium", icon: CreditCard },
       { to: "/settings", label: "Settings", hint: "Notifications and data", icon: Settings },
-      { to: "/onboarding", label: "Setup", hint: "Guided setup", icon: Rocket },
+      { to: "/onboarding", label: "Setup", hint: "Family, documents, vehicles, vendors", icon: Rocket },
       { to: "/landing", label: "The story", hint: "How it works", icon: BellRing },
       { to: "/docs", label: "Documentation", hint: "Project dossier", icon: BookOpen },
     ],

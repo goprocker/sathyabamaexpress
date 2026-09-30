@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { Forecast, Obligation } from "@household/contracts";
+import { obligationTiming, type Forecast, type Obligation } from "@household/contracts";
 import type { HouseholdStore } from "@household/db";
 
 export function runForecastEngine(
@@ -118,7 +118,14 @@ export function runForecastEngine(
   }
 
   // 4. Obligation compliance forecasts
-  const obligations = state.obligations.filter((o) => o.householdId === householdId);
+  // Obligations that come from Setup (documents, bills, services) carry dates, not fixed statuses:
+  // work out how many days are left today so they never go stale.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const obligations = state.obligations
+    .filter((o) => o.householdId === householdId)
+    .map((o) =>
+      o.sourceEventId?.startsWith("profile:") ? { ...o, ...obligationTiming(o.dueDate.slice(0, 10), todayIso) } : o,
+    );
   for (const obl of obligations) {
     if (obl.status === "DUE_SOON" || obl.status === "OVERDUE") {
       generatedForecasts.push({

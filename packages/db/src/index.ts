@@ -23,7 +23,9 @@ import type {
   StateTransition,
   TimelineEntry,
   Vendor,
+  HouseholdProfile,
 } from "@household/contracts";
+import { emptyHouseholdProfile } from "@household/contracts";
 
 export interface StoredEvent {
   id: string;
@@ -96,6 +98,8 @@ export interface CanonicalStateData {
   idempotencyCache: Record<string, { createdAt: string; result: unknown }>;
   /** The household's shopping cart. Absent in state saved before the cart existed. */
   cart?: CartItem[];
+  /** Family, documents, vehicles and bills collected in Setup. Absent on older saved states. */
+  profile?: HouseholdProfile;
 }
 
 export function emptyCanonicalState(): CanonicalStateData {
@@ -1074,9 +1078,8 @@ export function createCanonicalSeedState(
 
 /**
  * What a first-time signed-in user starts with: an empty household. No stock,
- * receipts, bills, meals, forecasts or history. Only reference data that the
- * engines need to function (the vendor directory and the canonical recipes)
- * is carried over from the demo seed.
+ * receipts, bills, meals, forecasts, vendors or history. Only the canonical
+ * recipes the meal engine needs are carried over from the demo seed.
  */
 export function buildFreshUserState(): CanonicalStateData {
   const seed = buildCanonicalSeedState("pre-receipt");
@@ -1091,9 +1094,12 @@ export function buildFreshUserState(): CanonicalStateData {
         createdAt: new Date().toISOString(),
       },
     ],
-    members: [{ id: "usr_owner", householdId, name: "You", role: "OWNER" }],
-    vendors: seed.vendors,
+    members: [{ id: "usr_owner", householdId, name: "You", role: "OWNER", relation: "self" }],
+    // A household's vendors are the ones it adds in Setup. The demo vendors have made-up phone numbers,
+    // so they are never carried over to a real household.
+    vendors: [],
     recipes: seed.recipes,
+    profile: emptyHouseholdProfile(),
   };
 }
 

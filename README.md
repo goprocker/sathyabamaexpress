@@ -49,6 +49,18 @@ The web app includes a household overview, timeline, kitchen inventory, receipt 
 
 The app includes a catalogue of Indian recipes, oldest-stock-first consumption, expiry and low-stock views, and idempotent inventory commands. The [documentation portal source](apps/web/src/docs/content.ts) explains the full judge-facing flow.
 
+### Setup: complete household data collection
+
+The **Setup** section (`/onboarding`) is where a household tells Livora about itself. A first-time signed-in user lands here, and Home shows a progress card until every step is done.
+
+- **Family:** your details and everyone at home, with ages and food preferences.
+- **Documents:** Aadhaar, PAN, driving licence, passport, voter ID, vehicle RC, insurance and PUC. Photos and PDFs are encrypted before storage and open only for their owner. Identity numbers are kept masked (last four characters only). Expiry dates become reminders and Life Admin obligations.
+- **Vehicles:** estimated mileage, tank size, odometer, service history and tyres. Log a trip and the fuel left drops at the vehicle's mileage; add petrol bills (with an optional read-the-bill assist) and it works out the real mileage, warns when it has dropped and says why it might have. You get a refuel reminder before the tank is low, plus service and tyre reminders.
+- **Bills:** electricity bills with due-date reminders; petrol bills live with each vehicle.
+- **Vendors:** the milk, grocery, poultry and vegetable sellers you order from, with phone and location.
+
+The arithmetic (fuel left, real mileage, due dates, completion) lives in `packages/life` as pure, tested functions; the UI only displays the results. Vendors are the household's own: nothing is called on a made-up number.
+
 ## How it works
 
 ```mermaid
@@ -111,7 +123,8 @@ The app can run without provider keys in open demo mode. To configure authentica
 | Variable | Purpose |
 | --- | --- |
 | `VITE_CLERK_PUBLISHABLE_KEY` + `CLERK_SECRET_KEY` | Enable sign-in in the web app and session verification in the API. Configure them together. |
-| `DATABASE_URL` | Store signed-in users' state in PostgreSQL; needed for durable state on serverless hosting. |
+| `DATABASE_URL` | Store signed-in users' state (and encrypted uploaded documents) in PostgreSQL; needed for durable state on serverless hosting. |
+| `DOCUMENT_ENCRYPTION_KEY` | Optional dedicated key for encrypting uploaded documents. Defaults to a key derived from `CLERK_SECRET_KEY`. Keep it stable. |
 | `OPENAI_API_KEY` | Enable model-backed assistant and extraction paths. |
 | `SARVAM_API_KEY` | Enable speech-to-text paths. |
 | `SNAPSERVE_API_KEY` | Enable live outbound calls; otherwise the adapter can use a labeled simulator. |

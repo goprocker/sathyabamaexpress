@@ -18,6 +18,7 @@ import {
 } from "@household/contracts";
 import type { HouseholdStore } from "@household/db";
 import { currentUser } from "./request-context.js";
+import { emptyHouseholdProfile } from "@household/contracts";
 import { consumeResources, listInventory, runForecastEngine, type ConsumeLine } from "@household/domain";
 import { answerWithHouseholdContext, transcribeAudioWithSarvam, type RequestedCartAction } from "@household/integrations";
 import {
@@ -27,8 +28,11 @@ import {
   findCartItem,
   parseCartCommand,
   setCartQuantity,
+  assistantHousehold,
   daysBetween,
   findCatalogRecipe,
+  profileReminders,
+  vehicleStatus,
   ingredientBase,
   LifeService,
   matchesKey,
@@ -193,6 +197,12 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
 
     // A signed-in household starts empty: no sample cart, meal plan, trip or notices.
     const ownData = currentUser() !== undefined;
+    const profile = store.getState().profile ?? emptyHouseholdProfile();
+    const members = store.getState().members;
+    const vendors = store.getState().vendors;
+    const statuses = profile.vehicles.map((vehicle) =>
+      vehicleStatus({ vehicle, fills: profile.fuelFills, services: profile.serviceRecords, today }),
+    );
     return {
       obligations: lifeObligations,
       forecasts: lifeForecasts,
@@ -200,6 +210,15 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
       cart: readCart(),
       weekly: ownData ? [] : weeklyMealPlan,
       samples: !ownData,
+      reminders: profileReminders({ profile, today, vehicleStatuses: statuses }),
+      // What the assistant may know about the household. Names, types and dates only:
+      // never document numbers, phone numbers or addresses.
+      household: assistantHousehold({
+        profile,
+        members: members.filter((m) => m.householdId === householdId),
+        vendors: vendors.filter((v) => v.householdId === householdId),
+        vehicleStatuses: statuses,
+      }),
     };
   };
 

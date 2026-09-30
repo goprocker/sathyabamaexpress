@@ -9,6 +9,7 @@ import { useActiveProfile } from "@/lib/profile";
 import { useStoredState } from "@/lib/storage";
 import { addDays, dayLabel, loadByDay, rupees } from "@household/life";
 import { MODULES, type ModuleId } from "@/lib/modules";
+import { SetupNudge } from "@/features/setup/SetupNudge";
 
 type HomeModule = "timeline" | "kitchen" | "admin" | "mobility" | "circular";
 
@@ -74,6 +75,7 @@ function HomeView({ data, summary }: { data: Overview; summary: Summary | undefi
 
   return (
     <div className="space-y-16">
+      <SetupNudge />
       <header className="fade-in-up stagger-1">
         <p className="eyebrow mb-4">
           {new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}

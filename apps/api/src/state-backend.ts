@@ -2,6 +2,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Pool } from "pg";
+import { getPgPool } from "./pg-pool.js";
 import type { CanonicalStateData } from "@household/db";
 
 export interface StateBackend {
@@ -63,30 +64,24 @@ export class FileStateBackend implements StateBackend {
 /** Serverless-safe: every request reads the latest state, so instances never serve stale data. */
 export class PostgresStateBackend implements StateBackend {
   readonly cacheable = false;
-  private pool: Promise<Pool> | null = null;
   private ready: Promise<unknown> | null = null;
 
   constructor(private readonly connectionString: string) {}
 
-  /** The driver is loaded only when a database is actually configured, so a missing or odd `pg` build cannot take down the whole API. */
-  private getPool(): Promise<Pool> {
-    this.pool ??= import("pg").then((mod) => {
-      const PoolCtor = mod.Pool ?? (mod as { default?: { Pool?: typeof mod.Pool } }).default?.Pool;
-      if (!PoolCtor) throw new Error("The pg driver did not load.");
-      return new PoolCtor({ connectionString: this.connectionString, max: 3 });
-    });
-    return this.pool;
-  }
-
   private async init(): Promise<Pool> {
-    const pool = await this.getPool();
-    this.ready ??= pool.query(
-      `create table if not exists livora_user_state (
-         user_id text primary key,
-         state jsonb not null,
-         updated_at timestamptz not null default now()
-       )`,
-    );
+    const pool = await getPgPool(this.connectionString);
+    this.ready ??= pool
+      .query(
+        `create table if not exists livora_user_state (
+           user_id text primary key,
+           state jsonb not null,
+           updated_at timestamptz not null default now()
+         )`,
+      )
+      .catch((err: unknown) => {
+        this.ready = null; // a failed attempt must not stay cached; retry on the next request
+        throw err;
+      });
     await this.ready;
     return pool;
   }

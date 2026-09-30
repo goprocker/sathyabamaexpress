@@ -504,3 +504,70 @@ function readCartAction(value: unknown): RequestedCartAction[] {
   if (unit === "dozen") unit = "pc";
   return [{ type, name, quantity: qty, unit }];
 }
+
+// ── Bill reading (fuel and electricity) ────────────────────────────────────
+
+export type BillKind = "fuel_bill" | "electricity_bill";
+
+export interface ReadBill {
+  date?: string;
+  quantity?: number;
+  amountInr?: number;
+  odometerKm?: number;
+  dueDate?: string;
+  units?: number;
+  billingPeriod?: string;
+  consumerNo?: string;
+}
+
+const isoDate = (v: unknown): string | undefined =>
+  typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim()) ? v.trim() : undefined;
+const positive = (v: unknown): number | undefined => {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v.replace(/[^\d.]/g, "")) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+};
+
+/**
+ * Reads the printed figures off a bill photo so the form can be pre-filled for review.
+ * Only what is actually printed: anything unclear is left out rather than guessed.
+ */
+export async function extractBillWithVision(options: { imageDataUrl: string; kind: BillKind }): Promise<ReadBill> {
+  const fuel = options.kind === "fuel_bill";
+  const fields = fuel
+    ? 'date (YYYY-MM-DD), quantity (litres or kg or kWh of fuel filled), amountInr (total paid), odometerKm (only if printed)'
+    : "amountInr (total payable), dueDate (YYYY-MM-DD), units (kWh consumed), billingPeriod (as printed), consumerNo";
+  const value = (await requestJson(
+    [
+      {
+        role: "system",
+        content:
+          "You read Indian utility and fuel bills. Return only JSON. Include a field only when it is clearly printed on the bill. Never guess or calculate a value.",
+      },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: `This is a ${fuel ? "petrol pump fuel bill" : "electricity bill"}. Return JSON with any of: ${fields}.` },
+          { type: "image_url", image_url: { url: options.imageDataUrl } },
+        ],
+      },
+    ],
+    process.env.OPENAI_VISION_MODEL || "gpt-4o",
+  )) as Record<string, unknown>;
+
+  const out: ReadBill = {};
+  const date = isoDate(value.date);
+  const dueDate = isoDate(value.dueDate);
+  const quantity = positive(value.quantity);
+  const amountInr = positive(value.amountInr);
+  const odometerKm = positive(value.odometerKm);
+  const units = positive(value.units);
+  if (date) out.date = date;
+  if (dueDate) out.dueDate = dueDate;
+  if (quantity) out.quantity = quantity;
+  if (amountInr) out.amountInr = amountInr;
+  if (odometerKm) out.odometerKm = odometerKm;
+  if (units) out.units = units;
+  if (typeof value.billingPeriod === "string" && value.billingPeriod.trim()) out.billingPeriod = value.billingPeriod.trim().slice(0, 40);
+  if (typeof value.consumerNo === "string" && value.consumerNo.trim()) out.consumerNo = value.consumerNo.trim().slice(0, 30);
+  return out;
+}

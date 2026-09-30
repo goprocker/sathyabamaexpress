@@ -189,7 +189,11 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/life: {}
+  packages/life:
+    dependencies:
+      '@household/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/tools:
     dependencies:

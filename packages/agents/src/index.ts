@@ -29,6 +29,7 @@ import {
 import {
   executeSnapserveOutboundCall,
   extractReceiptWithVision,
+  isSnapserveLive,
   parseObligationDeterministic,
   parseObligationWithOpenAI,
   parseVoiceOrTextIntent,
@@ -952,6 +953,10 @@ export async function runActionApprovalAndExecutionWorkflow(
   // one; otherwise the active SnapServe agent (the one with a caller number)
   // places the call on the household's behalf.
   const vendor = existingAction.targetVendor;
+  // Never place a live call to a made-up number: without a vendor on file there is nobody to call.
+  if (!vendor?.phoneE164 && isSnapserveLive()) {
+    throw new Error("Add a vendor with a phone number in Setup before sending this order.");
+  }
   const vendorAgent = vendor?.snapserveAgentId
     ? await resolveSnapserveAgent(vendor.snapserveAgentId)
     : null;

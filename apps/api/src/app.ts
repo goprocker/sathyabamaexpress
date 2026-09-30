@@ -37,6 +37,8 @@ import {
   runVoiceIntakeWorkflow,
 } from "@household/agents";
 import { clerkVerifier, registerAuth, verifyRequestToken, type SessionVerifier } from "./auth.js";
+import { defaultFileStore, type FileStore } from "./file-store.js";
+import { registerProfileRoutes } from "./profile-routes.js";
 import { currentUser, runWithUser, scopedStore } from "./request-context.js";
 import { defaultStateBackend, type StateBackend } from "./state-backend.js";
 import { UserStores } from "./user-stores.js";
@@ -159,6 +161,8 @@ export interface ApiAppOptions {
   verifySession?: SessionVerifier | undefined;
   /** Where signed-in users' households are stored. Defaults to Postgres (DATABASE_URL) or local files. */
   stateBackend?: StateBackend | undefined;
+  /** Where uploaded documents are kept (encrypted). Defaults to Postgres or local files, and is off without an encryption key. */
+  fileStore?: FileStore | null | undefined;
 }
 
 export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions = {}): FastifyInstance {
@@ -232,6 +236,10 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
 
   // LIVORA AI modules: life intelligence, mobility, circular, notifications.
   const life = registerLifeRoutes(app, store);
+
+  // Setup: family, documents, vehicles, bills and vendors. Uploaded files only exist for signed-in users.
+  const fileStore = options.fileStore !== undefined ? options.fileStore : verifySession ? defaultFileStore() : null;
+  registerProfileRoutes(app, store, fileStore);
 
   // ==========================================================================
   // 1. Health, Readiness, State Diff & Realtime SSE Stream
