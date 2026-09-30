@@ -182,6 +182,7 @@ export function ReceiptPage() {
                     <option>L</option>
                     <option>ml</option>
                     <option>pcs</option>
+                    <option>pack</option>
                   </select>
                   <Button
                     size="sm"

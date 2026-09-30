@@ -70,6 +70,9 @@ export async function extractReceiptWithVision(options: {
           type: "text",
           text:
             "Extract grocery receipt line items as JSON with vendorName and items. Each item must include rawName, numeric quantity, unit, optional priceInr, optional expiryDays only when printed, and confidence from 0 to 1. Do not infer missing quantities or prices. " +
+            "quantity is the number in the bill's quantity (Qty) column for that line, read exactly. " +
+            'unit is the unit printed next to that quantity, as one of kg, g, L, ml, pcs, pack. If the quantity has no unit next to it (e.g. "Bread 1"), use "pcs"; never assume grams. ' +
+            'A pack size inside the item name (e.g. "Amul Butter 100g", "Milk 500ml") is part of rawName, not the unit: "Amul Butter 100g  1" is quantity 1, unit "pcs". ' +
             (options.rawText ? `Receipt text: ${options.rawText}` : ""),
         },
       ];
@@ -106,7 +109,8 @@ export async function extractReceiptWithVision(options: {
               return {
                 rawName: String(line.rawName || "Item"),
                 quantity: Number(line.quantity || 1),
-                unit: String(line.unit || "g"),
+                // No printed unit means a count, not grams.
+                unit: typeof line.unit === "string" && line.unit.trim() ? line.unit.trim() : "pcs",
                 ...(typeof line.priceInr === "number"
                   ? { priceInr: line.priceInr }
                   : {}),

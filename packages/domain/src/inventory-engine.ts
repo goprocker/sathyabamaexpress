@@ -164,11 +164,9 @@ export function stageReceiptUpload(
 
   const items: ExtractedReceiptItem[] = extractedRawItems.map((item, idx) => {
     const matched = matchCanonicalResource(item.rawName, state.resources);
-    const normalized = normalizeToBaseUnit(
-      item.quantity,
-      item.unit,
-      matched?.baseUnit ?? "g"
-    );
+    const normalized = normalizeToBaseUnit(item.quantity, item.unit);
+    // A count on the bill for an item tracked by weight/volume (e.g. "Rice 1") is ambiguous: ask the user.
+    const unitMismatch = matched ? matched.baseUnit !== normalized.baseUnit : false;
     const expiryDate = item.expiryDays
       ? new Date(now.getTime() + item.expiryDays * 24 * 60 * 60 * 1000).toISOString()
       : null;
@@ -185,7 +183,7 @@ export function stageReceiptUpload(
       priceInr: item.priceInr,
       expiryDate,
       confidence: item.confidence,
-      needsReview: item.confidence < 0.85,
+      needsReview: item.confidence < 0.85 || unitMismatch,
       confirmed: true,
     };
   });
@@ -261,11 +259,7 @@ export function commitReceiptItems(
             ? draft.resources.find((r) => r.id === item.matchedResourceId)
             : undefined) ?? matchCanonicalResource(item.canonicalName, draft.resources);
 
-        const norm = normalizeToBaseUnit(
-          item.quantity,
-          item.unit,
-          resource?.baseUnit ?? "g"
-        );
+        const norm = normalizeToBaseUnit(item.quantity, item.unit);
 
         if (!resource) {
           const newResId = `res_${item.canonicalName.toLowerCase().replace(/[^a-z0-9]/g, "_")}`;

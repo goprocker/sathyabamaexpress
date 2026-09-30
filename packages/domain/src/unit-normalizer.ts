@@ -7,14 +7,21 @@ export interface NormalizedUnitResult {
   displayUnit: DisplayUnit;
 }
 
-export function normalizeToBaseUnit(
-  quantity: number,
-  unitInput: string,
-  fallbackBaseUnit: BaseUnit = "g"
-): NormalizedUnitResult {
+const COUNT_UNITS = new Set([
+  "", "pc", "pcs", "piece", "pieces", "count", "nos", "no", "no.", "ea", "each", "unit", "units", "x",
+  "loaf", "loaves", "bottle", "bottles", "box", "boxes", "tin", "tins", "can", "cans", "bunch", "bunches",
+]);
+const PACK_UNITS = new Set(["pack", "packs", "pkt", "pkts", "packet", "packets"]);
+
+/**
+ * Converts a printed quantity + unit to the base unit. A bill line with no
+ * unit, or a unit we don't recognise, is a count ("1" means one item) — never
+ * grams.
+ */
+export function normalizeToBaseUnit(quantity: number, unitInput: string): NormalizedUnitResult {
   const u = unitInput.trim().toLowerCase();
 
-  if (u === "kg" || u === "kilogram" || u === "kilograms" || u === "kilo") {
+  if (u === "kg" || u === "kgs" || u === "kilogram" || u === "kilograms" || u === "kilo" || u === "kilos") {
     return {
       baseQuantity: Math.round(quantity * 1000 * 100) / 100,
       baseUnit: "g",
@@ -28,7 +35,7 @@ export function normalizeToBaseUnit(
       displayUnit: quantity >= 1000 ? "kg" : "g",
     };
   }
-  if (u === "l" || u === "ltr" || u === "liter" || u === "liters" || u === "litre") {
+  if (u === "l" || u === "lt" || u === "ltr" || u === "ltrs" || u === "liter" || u === "liters" || u === "litre" || u === "litres") {
     return {
       baseQuantity: Math.round(quantity * 1000 * 100) / 100,
       baseUnit: "ml",
@@ -42,19 +49,18 @@ export function normalizeToBaseUnit(
       displayUnit: quantity >= 1000 ? "L" : "ml",
     };
   }
-  if (u === "pcs" || u === "pc" || u === "piece" || u === "pieces" || u === "count" || u === "pack") {
-    return {
-      baseQuantity: Math.round(quantity),
-      baseUnit: "count",
-      displayUnit: u === "pack" ? "pack" : "pcs",
-    };
+  if (u === "dozen" || u === "dz") {
+    return { baseQuantity: Math.round(quantity * 12), baseUnit: "count", displayUnit: "pcs" };
+  }
+  if (PACK_UNITS.has(u)) {
+    return { baseQuantity: Math.round(quantity), baseUnit: "count", displayUnit: "pack" };
+  }
+  if (COUNT_UNITS.has(u)) {
+    return { baseQuantity: Math.round(quantity), baseUnit: "count", displayUnit: "pcs" };
   }
 
-  return {
-    baseQuantity: Math.round(quantity * 100) / 100,
-    baseUnit: fallbackBaseUnit,
-    displayUnit: fallbackBaseUnit === "g" ? "g" : fallbackBaseUnit === "ml" ? "ml" : "pcs",
-  };
+  // Unrecognised unit: keep the printed count rather than guessing a weight.
+  return { baseQuantity: Math.round(quantity), baseUnit: "count", displayUnit: "pcs" };
 }
 
 export function matchCanonicalResource(

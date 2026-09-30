@@ -38,6 +38,16 @@ describe("Phase 3 & 4 — Deterministic Domain Engines & Security Guards", () =>
     assert.equal(chicken.displayUnit, "g");
   });
 
+  it("reads a bill quantity without a unit as a count, never grams", () => {
+    assert.deepEqual(normalizeToBaseUnit(1, ""), { baseQuantity: 1, baseUnit: "count", displayUnit: "pcs" });
+    assert.deepEqual(normalizeToBaseUnit(2, "Nos"), { baseQuantity: 2, baseUnit: "count", displayUnit: "pcs" });
+    assert.deepEqual(normalizeToBaseUnit(1, "loaf"), { baseQuantity: 1, baseUnit: "count", displayUnit: "pcs" });
+    assert.deepEqual(normalizeToBaseUnit(3, "pkt"), { baseQuantity: 3, baseUnit: "count", displayUnit: "pack" });
+    assert.deepEqual(normalizeToBaseUnit(1, "dozen"), { baseQuantity: 12, baseUnit: "count", displayUnit: "pcs" });
+    assert.deepEqual(normalizeToBaseUnit(1, "whatever"), { baseQuantity: 1, baseUnit: "count", displayUnit: "pcs" });
+    assert.deepEqual(normalizeToBaseUnit(2, "Ltrs"), { baseQuantity: 2000, baseUnit: "ml", displayUnit: "L" });
+  });
+
   it("matches English, Tanglish, and Tamil aliases to canonical household resources", () => {
     const store = createIsolatedStore();
     const resources = store.getState().resources;
@@ -150,5 +160,22 @@ describe("Phase 3 & 4 — Deterministic Domain Engines & Security Guards", () =>
 
     const postDrift = verifyApprovalToken(store, "act_test_hmac", issued.token);
     assert.equal(postDrift.valid, false);
+  });
+});
+
+describe("receipt staging units", () => {
+  it("keeps a unit-less bill count as pieces and flags counts for weight-tracked items", async () => {
+    const { HouseholdStore } = await import("@household/db");
+    const { stageReceiptUpload } = await import("@household/domain");
+    const store = new HouseholdStore(null);
+    const receipt = stageReceiptUpload(store, "hh_demo_001", "Test Mart", [
+      { rawName: "Bread", quantity: 1, unit: "", confidence: 0.95 },
+      { rawName: "India Gate Basmati Rice", quantity: 1, unit: "", confidence: 0.95 },
+    ]);
+    const [bread, rice] = receipt.items;
+    assert.equal(bread?.quantity, 1);
+    assert.equal(bread?.unit, "pcs");
+    assert.equal(rice?.unit, "pcs");
+    assert.equal(rice?.needsReview, true);
   });
 });
