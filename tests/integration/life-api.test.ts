@@ -63,3 +63,106 @@ describe("LIVORA API routes", () => {
     await a.close();
   });
 });
+
+describe("Recipes and inventory", () => {
+  type RecipeView = {
+    id: string;
+    image: string;
+    canMakeNow: boolean;
+    missing: string[];
+    ingredients: Array<{ name: string; enough: boolean; shortBy: number }>;
+  };
+
+  const recipes = async (a: ReturnType<typeof app>, servings = 4) =>
+    (await a.inject({ method: "GET", url: `/api/life/recipes?servings=${servings}` })).json().recipes as RecipeView[];
+
+  const riceGrams = async (a: ReturnType<typeof app>) => {
+    const items = (await a.inject({ method: "GET", url: "/api/inventory" })).json().items as Array<{
+      id: string;
+      onHandQuantity: number;
+    }>;
+    return items.find((i) => i.id === "res_rice")?.onHandQuantity;
+  };
+
+  it("serves a large catalogue with a photo for every recipe", async () => {
+    const a = app();
+    const list = await recipes(a);
+    assert.ok(list.length >= 50);
+    assert.equal(new Set(list.map((r) => r.id)).size, list.length);
+    assert.ok(list.every((r) => r.image.startsWith("https://commons.wikimedia.org/wiki/Special:FilePath/")));
+    await a.close();
+  });
+
+  it("checks pantry quantity, not just presence, and scales by servings", async () => {
+    const a = app();
+    const biryani = (await recipes(a, 4)).find((r) => r.id === "chicken-biryani");
+    assert.equal(biryani?.canMakeNow, false);
+    assert.deepEqual(biryani?.missing, ["Chicken"]);
+    const two = (await recipes(a, 2)).find((r) => r.id === "chicken-biryani");
+    assert.equal(two?.canMakeNow, true);
+    await a.close();
+  });
+
+  it("refuses to prepare when short and leaves inventory untouched", async () => {
+    const a = app();
+    const before = await riceGrams(a);
+    const res = await a.inject({ method: "POST", url: "/api/life/recipes/chicken-biryani/prepare", payload: {} });
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.json().shortfalls[0].name, "Chicken");
+    assert.equal(await riceGrams(a), before);
+    await a.close();
+  });
+
+  it("deducts stock once per idempotency key and 404s unknown recipes", async () => {
+    const a = app();
+    const before = (await riceGrams(a)) ?? 0;
+    const payload = { idempotencyKey: "cook-jeera-1" };
+    const first = await a.inject({ method: "POST", url: "/api/life/recipes/jeera-rice/prepare", payload });
+    assert.equal(first.statusCode, 200);
+    assert.equal(await riceGrams(a), before - 300);
+    const repeat = await a.inject({ method: "POST", url: "/api/life/recipes/jeera-rice/prepare", payload });
+    assert.equal(repeat.json().eventId, first.json().eventId);
+    assert.equal(await riceGrams(a), before - 300);
+    const missing = await a.inject({ method: "POST", url: "/api/life/recipes/nope/prepare", payload: {} });
+    assert.equal(missing.statusCode, 404);
+    await a.close();
+  });
+
+  it("prepares with what is available when partial is allowed", async () => {
+    const a = app();
+    const res = await a.inject({
+      method: "POST",
+      url: "/api/life/recipes/chicken-biryani/prepare",
+      payload: { allowPartial: true },
+    });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.json().shortfalls[0].name, "Chicken");
+    assert.ok(res.json().consumed.some((c: { name: string }) => c.name === "Chicken"));
+    await a.close();
+  });
+
+  it("a confirmed bill adds stock that unlocks recipes", async () => {
+    const a = app();
+    const before = (await recipes(a)).find((r) => r.id === "paneer-butter-masala");
+    assert.equal(before?.canMakeNow, false);
+    const confirm = await a.inject({
+      method: "POST",
+      url: "/api/receipts/confirm",
+      payload: {
+        vendorName: "Test Mart",
+        items: [
+          { canonicalName: "Paneer", quantity: 500, unit: "g", confirmed: true },
+          { canonicalName: "Butter", quantity: 200, unit: "g", confirmed: true },
+          { canonicalName: "Cream", quantity: 200, unit: "ml", confirmed: true },
+          { canonicalName: "Cashew", quantity: 100, unit: "g", confirmed: true },
+        ],
+      },
+    });
+    assert.equal(confirm.statusCode, 200);
+    const after = (await recipes(a)).find((r) => r.id === "paneer-butter-masala");
+    assert.equal(after?.canMakeNow, true);
+    const recent = (await a.inject({ method: "GET", url: "/api/life/receipts/recent" })).json().receipts;
+    assert.ok(recent.some((r: { vendor: string }) => r.vendor === "Test Mart"));
+    await a.close();
+  });
+});

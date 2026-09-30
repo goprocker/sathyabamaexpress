@@ -96,8 +96,10 @@ export const useStateDiff = () => useQuery(stateDiffQuery());
 
 // ── Mutations ──────────────────────────────────────────────────────────────
 
-function invalidateAllHouseholdQueries(qc: QueryClient) {
+export function invalidateAllHouseholdQueries(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: keys.dashboard });
+  // Life screens (recipes, summaries, assistant context) read the same inventory.
+  void qc.invalidateQueries({ queryKey: ["life"] });
   void qc.invalidateQueries({ queryKey: keys.inventory });
   void qc.invalidateQueries({ queryKey: keys.actions });
   void qc.invalidateQueries({ queryKey: keys.activity });

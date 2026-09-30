@@ -139,7 +139,7 @@ function KitchenView({ sample }: { sample: KitchenSample }) {
           <div className="flex items-center justify-between">
             <h2 className="section-title">Kitchen status</h2>
             <Link
-              to="/pantry"
+              to="/inventory"
               className="flex items-center gap-1 text-[14px] text-text-secondary transition-colors hover:text-text-primary"
             >
               Pantry <ArrowRight size={14} strokeWidth={1.5} />

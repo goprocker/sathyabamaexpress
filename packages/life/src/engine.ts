@@ -494,6 +494,8 @@ export interface Answer {
   text: string;
   bullets?: string[];
   sources: Array<{ label: string; href: string }>;
+  /** Set by the API: which engine produced the answer. */
+  provider?: "openai" | "rule-based";
 }
 
 export interface AssistantContext {

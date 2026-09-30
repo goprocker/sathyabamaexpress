@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ListingType, ModuleId, TransportMode, WardrobeCategory } from "@household/life";
 import * as life from "@/lib/lifeApi";
+import { invalidateAllHouseholdQueries } from "@/hooks/queries";
 
 const K = {
   overview: ["life", "overview"] as const,
@@ -87,7 +88,13 @@ export const useAddListing = () =>
 export const useSetFactors = () => useLifeMutation(life.setImpactFactors);
 export const useSetScope = () =>
   useLifeMutation((v: { module: ModuleId; enabled: boolean }) => life.setScope(v.module, v.enabled));
-export const useAsk = () => useMutation({ mutationFn: life.askAssistant });
+export const useAsk = () =>
+  useMutation({
+    mutationFn: (v: { question: string; history: life.AssistantTurn[]; image?: string }) =>
+      life.askAssistant(v.question, v.history, v.image),
+  });
+export const useAskByVoice = () =>
+  useMutation({ mutationFn: (v: { audio: Blob; history: life.AssistantTurn[] }) => life.askAssistantByVoice(v.audio, v.history) });
 
 /** Cart, monthly budget and weekly meal plan, loaded together for kitchen screens. */
 export function useKitchenSample() {
@@ -113,3 +120,17 @@ export function useKitchenSample() {
 }
 
 export type KitchenSample = NonNullable<ReturnType<typeof useKitchenSample>["data"]>;
+
+export const useRecipeCatalog = (servings: number) =>
+  useQuery({ queryKey: ["life", "recipes", servings], queryFn: () => life.getRecipeCatalog(servings), placeholderData: keepPreviousData });
+
+export const useRecentReceipts = () => useQuery({ queryKey: ["life", "receipts"], queryFn: life.getRecentReceipts });
+
+export function usePrepareRecipe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; servings: number; allowPartial: boolean; idempotencyKey: string }) =>
+      life.prepareRecipe(v.id, v),
+    onSuccess: () => invalidateAllHouseholdQueries(qc),
+  });
+}
