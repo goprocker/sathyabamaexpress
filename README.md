@@ -32,6 +32,7 @@ The kitchen is the first complete proof point. The same architecture is intended
 - [Data, AI, and security boundaries](#data-ai-and-security-boundaries)
 - [Testing and quality checks](#testing-and-quality-checks)
 - [Deployment](#deployment)
+- [Team](#team)
 - [Project documentation](#project-documentation)
 
 ## Product model
@@ -325,6 +326,19 @@ The health response reports the authentication and storage modes. The readiness 
 ### Container platforms
 
 `Dockerfile`, `railway.json`, and `render.yaml` provide starting points for container-based deployment. Supply the same server-side environment variables and use PostgreSQL for durable state.
+
+## Team
+
+Livora is designed and developed by:
+
+| Team member | Responsibility | GitHub |
+| --- | --- | --- |
+| **Gopinath** | Team Lead and Frontend Developer | [@goprocker](https://github.com/goprocker) |
+| **Shivani SK** | Business and Operations Lead | [@shivaniisk](https://github.com/shivaniisk) |
+| **Sai Charan** | Ripple Engine Developer | [@NINJA981](https://github.com/NINJA981) |
+| **Pranesh Mithun** | Backend Developer | [@PraneshMithun-cse](https://github.com/PraneshMithun-cse) |
+| **Reegan Kumaran** | Backend Developer | [@ReeganKumaran](https://github.com/ReeganKumaran) |
+| **D Vishal** | Research | [@dvishaldharani-afk](https://github.com/dvishaldharani-afk) |
 
 ## Project documentation
 
