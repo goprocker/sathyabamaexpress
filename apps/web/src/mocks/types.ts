@@ -275,7 +275,7 @@ export interface Forecast {
   id: string;
   itemId: string;
   itemName: string;
-  type: "SHORTAGE_RISK" | "EXPIRY_RISK" | "WASTE_RISK" | "RECURRING_DEMAND";
+  type: "SHORTAGE_RISK" | "EXPIRY_RISK" | "WASTE_RISK" | "RECURRING_DEMAND" | "COMPLIANCE_RISK";
   detail: string;
   horizonDays: number;
   severity: "high" | "medium" | "low";

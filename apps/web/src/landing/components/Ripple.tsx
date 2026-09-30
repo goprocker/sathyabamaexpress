@@ -38,7 +38,7 @@ export function RippleSignature() {
         </p>
         <div className="mx-auto mt-8 max-w-2xl">
           {/* Desktop: horizontal nodes, mobile: stacked */}
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div className="rounded-button border border-border p-4">
               <p className="text-small font-medium">Rice · 1.2 kg</p>
               <p className="mt-1 flex items-center gap-1.5 text-small text-accent">

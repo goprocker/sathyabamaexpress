@@ -9,7 +9,13 @@ const PORT = Number(process.env.PORT || 4000);
 const HOST = process.env.HOST || "0.0.0.0";
 
 async function start() {
-  const app = buildApiApp();
+  const clerkSecretKey = process.env.CLERK_SECRET_KEY?.trim() || undefined;
+  const app = buildApiApp(undefined, { clerkSecretKey });
+  console.log(
+    clerkSecretKey
+      ? "[Household Intelligence API] Clerk auth enforced"
+      : "[Household Intelligence API] CLERK_SECRET_KEY not set: API is open (local demo mode)",
+  );
 
   const shutdown = async (signal: string) => {
     console.log(`[Household Intelligence API] Received ${signal}, shutting down gracefully...`);

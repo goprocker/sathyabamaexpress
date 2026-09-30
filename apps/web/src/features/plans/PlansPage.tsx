@@ -34,7 +34,7 @@ function PlansView({ plans }: { plans: Plans }) {
           />
         }
       />
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <section className="card-base p-6" aria-label="Free plan">
           <p className="mono-label">Free</p>
           <p className="mt-2 text-[56px] leading-none tracking-[-0.05em]">{rupees(0)}</p>

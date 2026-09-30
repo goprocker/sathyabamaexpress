@@ -3,6 +3,7 @@
 // graceful fallback to the deterministic seed store if the server is offline.
 
 import * as seed from "../mocks/data";
+import { authHeaders } from "./auth";
 import type {
   ActionItem,
   ActionStatus,
@@ -45,6 +46,7 @@ async function apiFetch<T>(
     const res = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: {
+        ...(await authHeaders()),
         ...headers,
         ...(init?.headers as Record<string, string> | undefined),
       },

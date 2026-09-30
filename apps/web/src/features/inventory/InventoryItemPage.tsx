@@ -48,7 +48,7 @@ export function InventoryItemPage() {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="space-y-1">
           <SectionHeader>Canonical stock ledger</SectionHeader>
           <Card className="px-5 py-2">

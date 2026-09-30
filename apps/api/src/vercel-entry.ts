@@ -8,7 +8,7 @@ export default async function handler(
   res: ServerResponse
 ) {
   if (!appPromise) {
-    appPromise = buildApiApp();
+    appPromise = buildApiApp(undefined, { clerkSecretKey: process.env.CLERK_SECRET_KEY?.trim() || undefined });
   }
   const app = await appPromise;
   await app.ready();

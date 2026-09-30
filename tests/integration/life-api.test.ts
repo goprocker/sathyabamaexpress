@@ -166,3 +166,39 @@ describe("Recipes and inventory", () => {
     await a.close();
   });
 });
+
+describe("Clerk auth guard", () => {
+  const guarded = () => {
+    const file = path.join(os.tmpdir(), `life-auth-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    return buildApiApp(new HouseholdStore(file), { clerkSecretKey: "sk_test_dummy" });
+  };
+
+  it("rejects requests without a session token and keeps health public", async () => {
+    const a = guarded();
+    const noToken = await a.inject({ method: "GET", url: "/api/life/recipes" });
+    assert.equal(noToken.statusCode, 401);
+    const health = await a.inject({ method: "GET", url: "/api/health" });
+    assert.equal(health.statusCode, 200);
+    await a.close();
+  });
+
+  it("rejects an invalid token and does not run the handler", async () => {
+    const a = guarded();
+    const res = await a.inject({
+      method: "POST",
+      url: "/api/life/recipes/jeera-rice/prepare",
+      headers: { authorization: "Bearer not-a-real-token" },
+      payload: {},
+    });
+    assert.equal(res.statusCode, 401);
+    await a.close();
+  });
+
+  it("leaves the signed webhook route to its own signature check", async () => {
+    const a = guarded();
+    const res = await a.inject({ method: "POST", url: "/api/webhooks/snapserve", payload: {} });
+    // Reaches the webhook handler (which rejects the bad signature itself) instead of the session guard.
+    assert.notEqual(res.json().error, "Sign in required.");
+    await a.close();
+  });
+});

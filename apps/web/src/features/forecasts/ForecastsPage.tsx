@@ -24,7 +24,11 @@ const typeMeta: Record<
   EXPIRY_RISK: { label: "Expiry", icon: CalendarClock, tone: "warning" },
   WASTE_RISK: { label: "Waste", icon: AlertTriangle, tone: "warning" },
   RECURRING_DEMAND: { label: "Recurring", icon: TrendingDown, tone: "neutral" },
+  COMPLIANCE_RISK: { label: "Compliance", icon: CalendarClock, tone: "warning" },
 };
+
+// The API can add risk types before the UI knows them; never crash the page over a label.
+const unknownMeta = { label: "Risk", icon: AlertTriangle, tone: "neutral" as PillTone };
 
 const severityTone: Record<Forecast["severity"], PillTone> = {
   high: "danger",
@@ -49,7 +53,7 @@ export function ForecastsPage() {
 
       <div className="space-y-3">
         {sorted.map((f) => {
-          const meta = typeMeta[f.type];
+          const meta = typeMeta[f.type] ?? unknownMeta;
           const Icon = meta.icon;
           return (
             <Card key={f.id} className="px-5 py-4">

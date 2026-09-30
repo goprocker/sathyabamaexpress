@@ -14,6 +14,7 @@ import {
 import { QueryBoundary } from "@/components/ui/QueryBoundary";
 import { useKitchenSample, useMembers } from "@/hooks/life";
 import { useInventory } from "@/hooks/queries";
+import { useAccount } from "@/lib/auth";
 
 function SettingRow({
   icon: Icon,
@@ -52,18 +53,22 @@ export function ProfilePage() {
 function ProfileView({ budgetData }: { budgetData: { monthlyBudget: number; spent: number } }) {
   const familyMembers = useMembers().data ?? [];
   const totalItems = useInventory().data?.length ?? 0;
+  const account = useAccount();
+  // Signed-in users see their own identity; demo mode keeps the sample profile.
+  const displayName = account.enabled ? account.name || account.email.split("@")[0] || "You" : "Priya Sharma";
+  const displayEmail = account.enabled ? account.email : "priya.sharma@email.com";
 
   return (
     <div className="space-y-6 max-w-[600px]">
       {/* Profile Header */}
       <div className="card-base p-6 text-center fade-in-up stagger-1">
         <div className="w-20 h-20 rounded-full bg-[var(--color-accent)] flex items-center justify-center mx-auto mb-4">
-          <span className="text-[28px] font-semibold text-white">P</span>
+          <span className="text-[28px] font-semibold text-white">{displayName.slice(0, 1).toUpperCase()}</span>
         </div>
         <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-[var(--color-text-primary)]">
-          Priya Sharma
+          {displayName}
         </h1>
-        <p className="text-[13px] text-[var(--color-text-secondary)] mt-1">priya.sharma@email.com</p>
+        <p className="text-[13px] text-[var(--color-text-secondary)] mt-1">{displayEmail}</p>
         <div className="flex items-center justify-center gap-1.5 mt-3">
           <Crown size={14} className="text-[#F5A623]" />
           <span className="text-[12px] font-semibold text-[#F5A623]">Premium Plan</span>
@@ -153,10 +158,16 @@ function ProfileView({ budgetData }: { budgetData: { monthlyBudget: number; spen
       </div>
 
       {/* Sign out */}
-      <button className="flex items-center gap-2 px-4 py-3 w-full text-[14px] font-medium text-[var(--color-danger)] rounded-[8px] hover:bg-[var(--color-danger-bg)] transition-colors duration-[150ms]">
-        <LogOut size={16} />
-        Sign Out
-      </button>
+      {account.enabled && (
+        <button
+          type="button"
+          onClick={() => void account.signOut()}
+          className="flex items-center gap-2 px-4 py-3 w-full text-[14px] font-medium text-[var(--color-danger)] rounded-[8px] hover:bg-[var(--color-danger-bg)] transition-colors duration-[150ms]"
+        >
+          <LogOut size={16} />
+          Sign Out
+        </button>
+      )}
     </div>
   );
 }

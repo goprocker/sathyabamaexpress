@@ -116,7 +116,7 @@ function MobilityView({ data }: { data: Mobility }) {
       </section>
 
       {/* Departure assistant */}
-      <section aria-labelledby="dep-title" className="grid gap-3 lg:grid-cols-2">
+      <section aria-labelledby="dep-title" className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="card-base p-5">
           <h2 id="dep-title" className="section-title mb-4">
             Departure assistant
@@ -183,7 +183,7 @@ function MobilityView({ data }: { data: Mobility }) {
       {/* EV */}
       <section aria-labelledby="ev-title">
         <SectionTitle eyebrow="EV charging assistant" title={vehicle.name} />
-        <div className="grid gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
           <div className="card-base p-5 lg:col-span-2">
             <div className="flex items-center gap-4">
               <ModuleIcon module="mobility" size={52} />
@@ -265,7 +265,7 @@ function MobilityView({ data }: { data: Mobility }) {
       </section>
 
       {/* Journey sharing + pools */}
-      <section className="grid gap-3 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="card-base p-5">
           <h2 className="section-title mb-1">Trusted journey sharing</h2>
           <p className="mb-4 text-[14px] text-text-secondary">
