@@ -52,15 +52,28 @@ export function registerAuth(app: FastifyInstance, verify: SessionVerifier, stor
       void reply.code(401).send({ error: "Sign in required." });
       return;
     }
-    verify(token)
-      .then(async ({ userId }) => ({ userId, store: await stores.get(userId) }))
-      .then((ctx) => {
-        userOf.set(request, ctx.userId);
-        runWithUser(ctx, () => done(null, payload));
-      })
-      .catch(() => {
-        void reply.code(401).send({ error: "Session expired. Sign in again." });
-      });
+    void (async () => {
+      let userId: string;
+      try {
+        userId = (await verify(token)).userId;
+      } catch (err) {
+        // The reason (wrong key pair, unauthorised origin, expired token) is what you need in the logs; never the token.
+        const reason = (err as { reason?: string }).reason ?? (err instanceof Error ? err.message : "unknown");
+        console.warn(`[auth] session token rejected: ${reason}`);
+        void reply.code(401).send({ error: "Session expired. Sign in again.", code: "session" });
+        return;
+      }
+      let store;
+      try {
+        store = await stores.get(userId);
+      } catch (err) {
+        console.error("[auth] could not open the household store:", err);
+        void reply.code(503).send({ error: "Couldn't open your household right now. Try again in a moment.", code: "storage" });
+        return;
+      }
+      userOf.set(request, userId);
+      runWithUser({ userId, store }, () => done(null, payload));
+    })();
   });
 
   // Serverless functions freeze once the response is out, so make sure the user's

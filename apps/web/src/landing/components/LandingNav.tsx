@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { authEnabled } from "@/lib/auth";
+import { AccountButton } from "@/components/auth/AccountButton";
+import { authEnabled, useAccount } from "@/lib/auth";
 import { LivoraMark } from "@/components/layout/LivoraMark";
 import { ArrowRight, MoreVertical, X } from "lucide-react";
 
@@ -10,7 +11,13 @@ const links = [
   { label: "Technology", href: "#technology" },
 ];
 
+const accountIcon =
+  "relative flex size-11 items-center justify-center rounded-full text-text-primary transition-colors duration-[180ms] hover:bg-surface-elevated";
+
 export function LandingNav() {
+  const account = useAccount();
+  // Signed-in visitors go straight to the app; only signed-out visitors are asked to sign in.
+  const ctaLabel = authEnabled && !account.signedIn ? "Sign in" : "Open app";
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
 
@@ -54,23 +61,28 @@ export function LandingNav() {
               </a>
             ))}
             <Link to="/docs" className="flex h-10 items-center rounded-full px-4 text-[15px] transition-colors duration-[180ms] hover:bg-surface-elevated">Documentation</Link>
+            {/* The Sign in button below already covers signed-out visitors; show the avatar once signed in. */}
+            {account.signedIn && <AccountButton className={accountIcon} />}
             <Link
               to="/"
-              className="ml-2 btn-primary !min-h-0 h-10 !rounded-full !px-4"
+              className="ml-1 btn-primary !min-h-0 h-10 !rounded-full !px-4"
             >
-              {authEnabled ? "Sign in" : "Enter app"}
+              {ctaLabel}
               <ArrowRight size={16} strokeWidth={1.75} />
             </Link>
           </div>
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-label={open ? "Close menu" : "Open menu"}
-            onClick={() => setOpen((v) => !v)}
-            className="inline-flex size-11 items-center justify-center rounded-full text-text-primary hover:bg-surface-elevated md:hidden"
-          >
-            {open ? <X size={20} /> : <MoreVertical size={20} />}
-          </button>
+          <div className="flex items-center gap-1 md:hidden">
+            <AccountButton className={accountIcon} />
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-label={open ? "Close menu" : "Open menu"}
+              onClick={() => setOpen((v) => !v)}
+              className="inline-flex size-11 items-center justify-center rounded-full text-text-primary hover:bg-surface-elevated"
+            >
+              {open ? <X size={20} /> : <MoreVertical size={20} />}
+            </button>
+          </div>
         </nav>
         {open && (
           <div
@@ -93,7 +105,7 @@ export function LandingNav() {
                 to="/"
                 className="mt-2 inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-full bg-accent px-4 text-[16px] text-accent-text"
               >
-                {authEnabled ? "Sign in" : "Enter app"}
+                {ctaLabel}
                 <ArrowRight size={16} strokeWidth={1.75} />
               </Link>
             </div>

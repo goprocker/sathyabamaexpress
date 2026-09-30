@@ -1,7 +1,7 @@
 // Where each user's household state lives. One JSON document per user.
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Pool } from "pg";
+import type { Pool } from "pg";
 import type { CanonicalStateData } from "@household/db";
 
 export interface StateBackend {
@@ -63,27 +63,37 @@ export class FileStateBackend implements StateBackend {
 /** Serverless-safe: every request reads the latest state, so instances never serve stale data. */
 export class PostgresStateBackend implements StateBackend {
   readonly cacheable = false;
-  private readonly pool: Pool;
+  private pool: Promise<Pool> | null = null;
   private ready: Promise<unknown> | null = null;
 
-  constructor(connectionString: string) {
-    this.pool = new Pool({ connectionString, max: 3 });
+  constructor(private readonly connectionString: string) {}
+
+  /** The driver is loaded only when a database is actually configured, so a missing or odd `pg` build cannot take down the whole API. */
+  private getPool(): Promise<Pool> {
+    this.pool ??= import("pg").then((mod) => {
+      const PoolCtor = mod.Pool ?? (mod as { default?: { Pool?: typeof mod.Pool } }).default?.Pool;
+      if (!PoolCtor) throw new Error("The pg driver did not load.");
+      return new PoolCtor({ connectionString: this.connectionString, max: 3 });
+    });
+    return this.pool;
   }
 
-  private init() {
-    this.ready ??= this.pool.query(
+  private async init(): Promise<Pool> {
+    const pool = await this.getPool();
+    this.ready ??= pool.query(
       `create table if not exists livora_user_state (
          user_id text primary key,
          state jsonb not null,
          updated_at timestamptz not null default now()
        )`,
     );
-    return this.ready;
+    await this.ready;
+    return pool;
   }
 
   async load(userId: string) {
-    await this.init();
-    const res = await this.pool.query<{ state: CanonicalStateData }>(
+    const pool = await this.init();
+    const res = await pool.query<{ state: CanonicalStateData }>(
       "select state from livora_user_state where user_id = $1",
       [userId],
     );
@@ -92,8 +102,8 @@ export class PostgresStateBackend implements StateBackend {
   }
 
   async save(userId: string, state: CanonicalStateData) {
-    await this.init();
-    await this.pool.query(
+    const pool = await this.init();
+    await pool.query(
       `insert into livora_user_state (user_id, state) values ($1, $2::jsonb)
        on conflict (user_id) do update set state = excluded.state, updated_at = now()`,
       [userId, JSON.stringify(state)],
@@ -101,8 +111,8 @@ export class PostgresStateBackend implements StateBackend {
   }
 
   async findUserByCall(callId: string) {
-    await this.init();
-    const res = await this.pool.query<{ user_id: string }>(
+    const pool = await this.init();
+    const res = await pool.query<{ user_id: string }>(
       "select user_id from livora_user_state where state->'actions' @> $1::jsonb limit 1",
       [JSON.stringify([{ externalCallId: callId }])],
     );
@@ -111,7 +121,7 @@ export class PostgresStateBackend implements StateBackend {
 }
 
 export class MemoryStateBackend implements StateBackend {
-  readonly cacheable = false;
+  readonly cacheable: boolean = false;
   readonly saved = new Map<string, CanonicalStateData>();
   async load(userId: string) {
     const s = this.saved.get(userId);

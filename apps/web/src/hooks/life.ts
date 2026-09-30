@@ -109,6 +109,7 @@ export function useKitchenSample() {
       return {
         isPending: results.some((r) => r.isPending),
         isError: results.some((r) => r.isError),
+        error: results.find((r) => r.error)?.error,
         data:
           cart?.data !== undefined && budget?.data !== undefined && days?.data !== undefined
             ? { cart: cart.data, budget: budget.data, days: days.data }

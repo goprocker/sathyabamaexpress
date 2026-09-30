@@ -10,10 +10,20 @@ export class UserStores {
 
   constructor(private readonly backend: StateBackend) {}
 
-  async get(userId: string): Promise<HouseholdStore> {
-    const cached = this.cache.get(userId);
-    if (cached) return cached;
+  /** Opens in progress. A new user's first screen fires several requests at once; they must all get the same store. */
+  private readonly opening = new Map<string, Promise<HouseholdStore>>();
 
+  get(userId: string): Promise<HouseholdStore> {
+    const cached = this.cache.get(userId);
+    if (cached) return Promise.resolve(cached);
+    const inFlight = this.opening.get(userId);
+    if (inFlight) return inFlight;
+    const opening = this.open(userId).finally(() => this.opening.delete(userId));
+    this.opening.set(userId, opening);
+    return opening;
+  }
+
+  private async open(userId: string): Promise<HouseholdStore> {
     const loaded = await this.backend.load(userId);
     const store = new HouseholdStore(null, loaded ?? undefined, {
       seed: buildFreshUserState,

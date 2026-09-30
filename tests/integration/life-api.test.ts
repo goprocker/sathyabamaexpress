@@ -285,3 +285,60 @@ describe("Per-user households", () => {
     await a.close();
   });
 });
+
+describe("Signed-in server behaviour", () => {
+  const verifySession = async (token: string) => {
+    if (!token.startsWith("user-")) throw Object.assign(new Error("nope"), { reason: "token-invalid" });
+    return { userId: token };
+  };
+  const file = () => path.join(os.tmpdir(), `life-srv-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+  const as = (token: string) => ({ authorization: `Bearer ${token}` });
+
+  it("gives simultaneous first requests the same household", async () => {
+    // A cacheable backend that counts loads, like the local file backend.
+    class CountingBackend extends MemoryStateBackend {
+      loads = 0;
+      override readonly cacheable = true;
+      override async load(userId: string) {
+        this.loads += 1;
+        await new Promise((r) => setTimeout(r, 20));
+        return super.load(userId);
+      }
+    }
+    const backend = new CountingBackend();
+    const a = buildApiApp(new HouseholdStore(file()), { verifySession, stateBackend: backend });
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () => a.inject({ method: "GET", url: "/api/inventory", headers: as("user-race") })),
+    );
+    assert.ok(results.every((r) => r.statusCode === 200));
+    assert.equal(backend.loads, 1);
+    await a.close();
+  });
+
+  it("reports a storage failure as 503, not as an expired session", async () => {
+    class BrokenBackend extends MemoryStateBackend {
+      override async load(): Promise<never> {
+        throw new Error("database down");
+      }
+    }
+    const a = buildApiApp(new HouseholdStore(file()), { verifySession, stateBackend: new BrokenBackend() });
+    const res = await a.inject({ method: "GET", url: "/api/inventory", headers: as("user-x") });
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.json().code, "storage");
+    const bad = await a.inject({ method: "GET", url: "/api/inventory", headers: as("nobody") });
+    assert.equal(bad.statusCode, 401);
+    assert.equal(bad.json().code, "session");
+    await a.close();
+  });
+
+  it("says how it is configured on the public health check", async () => {
+    const a = buildApiApp(new HouseholdStore(file()), { verifySession, stateBackend: new MemoryStateBackend() });
+    const res = await a.inject({ method: "GET", url: "/api/health" });
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.json().config.auth, "enforced");
+    await a.close();
+    const open = buildApiApp(new HouseholdStore(file()));
+    assert.match((await open.inject({ method: "GET", url: "/api/health" })).json().config.auth, /^open/);
+    await open.close();
+  });
+});

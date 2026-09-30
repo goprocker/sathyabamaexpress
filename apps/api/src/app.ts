@@ -249,6 +249,12 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
         (e) => e.status === "AWAITING_DELIVERY"
       ).length,
       uptimeSeconds: Math.round(process.uptime()),
+      // How this server is set up, for diagnosing a deployment. Names and yes/no only, never values.
+      config: {
+        auth: verifySession ? "enforced" : "open (no CLERK_SECRET_KEY)",
+        storage: verifySession ? (process.env.DATABASE_URL?.trim() ? "postgres" : "files (not durable on serverless)") : "shared demo",
+        authorizedParties: Boolean(process.env.CLERK_AUTHORIZED_PARTIES?.trim()),
+      },
       timestamp: new Date().toISOString(),
     };
   });

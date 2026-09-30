@@ -190,9 +190,11 @@ export function EmptyState({
 export function ErrorState({
   message = "Couldn't load data.",
   onRetry,
+  children,
 }: {
   message?: string;
   onRetry?: () => void;
+  children?: ReactNode;
 }) {
   return (
     <div
@@ -205,6 +207,7 @@ export function ErrorState({
           Try again
         </Button>
       )}
+      {children}
     </div>
   );
 }
