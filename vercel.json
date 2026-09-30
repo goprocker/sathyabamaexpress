@@ -22,6 +22,6 @@
     { "src": "/sw.js", "dest": "/apps/web/dist/sw.js" },
     { "src": "/manifest.webmanifest", "dest": "/apps/web/dist/manifest.webmanifest" },
     { "src": "/registerSW.js", "dest": "/apps/web/dist/registerSW.js" },
-    { "src": "/(.*)", "dest": "/apps/web/dist/index.html" }
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
