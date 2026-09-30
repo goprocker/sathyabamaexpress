@@ -98,7 +98,7 @@ function CircularView({ data }: { data: Circular }) {
       {/* Occasion planner */}
       <section aria-labelledby="occ-title">
         <SectionTitle eyebrow="Smart occasion planner" title={`${occasion.name} · ${dayLabel(eventDate, today)}`} />
-        <div className="grid gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
           <div className="card-base space-y-4 p-5 lg:col-span-3">
             <p className="text-[14px] text-text-secondary">{occasion.need}. Pick what you'll wear from your wardrobe.</p>
             {plan.map((p) => (
@@ -246,7 +246,7 @@ function CircularView({ data }: { data: Circular }) {
             ]}
           />
         </div>
-        <ul className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           {shownListings.map((l) => (
             <li key={l.id} className="card-base flex flex-col p-5">
               <div className="flex items-start justify-between gap-2">
@@ -273,7 +273,7 @@ function CircularView({ data }: { data: Circular }) {
       {/* Sustainability */}
       <section aria-labelledby="sus-title" className="card-base p-5 md:p-6">
         <SectionTitle eyebrow="Sustainability dashboard" title="Impact you can verify" />
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div>
             <p className="text-[64px] leading-none tracking-[-0.05em]">
               {co2}

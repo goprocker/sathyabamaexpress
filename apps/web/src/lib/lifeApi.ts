@@ -13,6 +13,7 @@ import {
 } from "@household/life";
 import * as seed from "@/mocks/data";
 import { API_BASE } from "./api";
+import { authHeaders } from "./auth";
 
 export type Overview = ReturnType<LifeService["overview"]>;
 export type Summary = ReturnType<LifeService["summary"]>;
@@ -46,6 +47,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T | undefin
       ...init,
       headers: {
         Accept: "application/json",
+        ...(await authHeaders()),
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
         ...(init?.headers as Record<string, string> | undefined),
       },
@@ -175,7 +177,7 @@ export async function askAssistantByVoice(
   form.append("file", audio, "speech.webm");
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/life/assistant/voice`, { method: "POST", body: form });
+    res = await fetch(`${API_BASE}/life/assistant/voice`, { method: "POST", body: form, headers: await authHeaders() });
   } catch {
     throw new Error("Voice service unreachable.");
   }
@@ -204,7 +206,7 @@ export async function prepareRecipe(
   try {
     res = await fetch(`${API_BASE}/life/recipes/${encodeURIComponent(id)}/prepare`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json", ...(await authHeaders()) },
       body: JSON.stringify(opts),
     });
   } catch {

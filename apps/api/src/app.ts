@@ -36,6 +36,7 @@ import {
   runReceiptExtractionWorkflow,
   runVoiceIntakeWorkflow,
 } from "@household/agents";
+import { registerClerkAuth } from "./auth.js";
 import { registerLifeRoutes } from "./life-routes.js";
 import {
   isSnapserveLive,
@@ -148,11 +149,18 @@ function enrichRippleGraphWithFrontendShape(graph: RippleGraph) {
   };
 }
 
-export function buildApiApp(customStore?: HouseholdStore): FastifyInstance {
+export interface ApiAppOptions {
+  /** Clerk secret key. When set, every route except the public ones needs a valid session token. */
+  clerkSecretKey?: string | undefined;
+}
+
+export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions = {}): FastifyInstance {
   const store = customStore || db;
   const app = Fastify({
     logger: false,
   });
+
+  if (options.clerkSecretKey) registerClerkAuth(app, options.clerkSecretKey);
 
   // Active SSE clients for live UI updates (Snapserve call progression, inventory changes, etc.)
   const sseClients = new Set<ServerResponse>();

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { MODULES, type ModuleId } from "@/lib/modules";
 import { SAMPLE_NOTE } from "@household/life";
 
@@ -68,8 +68,21 @@ export function Segmented<T extends string>({
   options: Array<{ id: T; label: string }>;
   label: string;
 }) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // On narrow screens the options scroll inside the pill; keep the selected one in view.
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [value]);
+
   return (
-    <div role="tablist" aria-label={label} className="glass inline-flex rounded-full p-1">
+    <div
+      ref={listRef}
+      role="tablist"
+      aria-label={label}
+      className="glass inline-flex max-w-full overflow-x-auto rounded-full p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
       {options.map((o) => (
         <button
           key={o.id}
@@ -77,7 +90,7 @@ export function Segmented<T extends string>({
           role="tab"
           aria-selected={value === o.id}
           onClick={() => onChange(o.id)}
-          className={`min-h-[36px] rounded-full px-4 text-[14px] transition-colors duration-[180ms] ${
+          className={`min-h-[44px] shrink-0 whitespace-nowrap rounded-full px-4 text-[14px] transition-colors duration-[180ms] md:min-h-[36px] ${
             value === o.id ? "bg-accent text-accent-text" : "text-text-secondary hover:text-text-primary"
           }`}
         >

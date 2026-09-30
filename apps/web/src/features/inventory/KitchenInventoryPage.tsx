@@ -110,7 +110,7 @@ export function KitchenInventoryPage() {
       <section aria-labelledby="bills-h" className="space-y-3">
         <h2 id="bills-h" className="eyebrow">Added from your bills</h2>
         {receipts && receipts.length > 0 ? (
-          <ul className="grid gap-3 sm:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {receipts.map((r) => (
               <li key={r.id} className="card-base space-y-2 p-4">
                 <div className="flex items-center justify-between gap-3">

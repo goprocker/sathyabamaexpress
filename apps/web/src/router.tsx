@@ -1,5 +1,6 @@
 import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/react-router";
 import { lazy, Suspense, type ReactNode } from "react";
+import { AuthGate } from "@/components/auth/AuthGate";
 import { AppShell } from "@/components/layout/AppShell";
 import { DashboardPage as KitchenPage } from "@/features/dashboard/DashboardPage";
 import { HomePage } from "@/features/home/HomePage";
@@ -36,7 +37,11 @@ const rootRoute = createRootRoute({ component: () => <Outlet /> });
 
 // Product pages share the AppShell chrome; landing renders standalone.
 function shell(page: ReactNode) {
-  return <AppShell>{page}</AppShell>;
+  return (
+    <AuthGate>
+      <AppShell>{page}</AppShell>
+    </AuthGate>
+  );
 }
 
 const indexRoute = createRoute({

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { authEnabled } from "@/lib/auth";
 import { LivoraMark } from "@/components/layout/LivoraMark";
 import { ArrowRight, MoreVertical, X } from "lucide-react";
 
@@ -56,7 +57,7 @@ export function LandingNav() {
               to="/"
               className="ml-2 btn-primary !min-h-0 h-10 !rounded-full !px-4"
             >
-              Enter app
+              {authEnabled ? "Sign in" : "Enter app"}
               <ArrowRight size={16} strokeWidth={1.75} />
             </Link>
           </div>
@@ -90,7 +91,7 @@ export function LandingNav() {
                 to="/"
                 className="mt-2 inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-full bg-accent px-4 text-[16px] text-accent-text"
               >
-                Enter app
+                {authEnabled ? "Sign in" : "Enter app"}
                 <ArrowRight size={16} strokeWidth={1.75} />
               </Link>
             </div>

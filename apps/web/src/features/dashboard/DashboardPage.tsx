@@ -159,7 +159,7 @@ function KitchenView({ sample }: { sample: KitchenSample }) {
             ))}
           </div>
 
-          <div role="tablist" aria-label="Stock filter" className="inline-flex rounded-full bg-surface-elevated p-1">
+          <div role="tablist" aria-label="Stock filter" className="inline-flex max-w-full overflow-x-auto rounded-full bg-surface-elevated p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {filters.map((f) => (
               <button
                 key={f.id}
@@ -167,7 +167,7 @@ function KitchenView({ sample }: { sample: KitchenSample }) {
                 role="tab"
                 aria-selected={filter === f.id}
                 onClick={() => setFilter(f.id)}
-                className={`min-h-[36px] rounded-full px-3.5 text-[14px] transition-colors duration-[180ms] ${
+                className={`min-h-[44px] shrink-0 whitespace-nowrap rounded-full px-3.5 text-[14px] transition-colors duration-[180ms] md:min-h-[36px] ${
                   filter === f.id ? "bg-accent text-accent-text" : "text-text-secondary hover:text-text-primary"
                 }`}
               >

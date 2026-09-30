@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Bell, MoreVertical, Search, Sparkles, X } from "lucide-react";
+import { Bell, LogOut, MoreVertical, Search, Sparkles, X } from "lucide-react";
 import { LivoraMark } from "./LivoraMark";
 import { SearchOverlay } from "./SearchOverlay";
 import { isNavActive, navGroups, primaryNav } from "./nav";
 import { useNotifications } from "@/hooks/life";
+import { AccountButton } from "@/components/auth/AccountButton";
+import { useAccount } from "@/lib/auth";
 import { useActiveProfile } from "@/lib/profile";
 import { MODULES } from "@/lib/modules";
 
@@ -20,7 +22,7 @@ export function Wordmark() {
   return (
     <Link to="/" aria-label="LIVORA AI home" className="flex items-center gap-2.5">
       <LivoraMark size={34} />
-      <span className="text-[21px] font-semibold leading-none tracking-[-0.04em] text-[#1F4A2E]">
+      <span className="text-[21px] font-semibold leading-none tracking-[-0.04em] text-[#1F4A2E] max-[349px]:hidden">
         Livora
         <sup className="ml-0.5 align-super text-[10px] font-semibold tracking-normal text-gold">AI</sup>
       </span>
@@ -32,6 +34,7 @@ const iconBtn =
   "relative flex size-11 items-center justify-center rounded-full text-text-primary transition-colors duration-[180ms] hover:bg-surface-elevated";
 
 export function TopNav() {
+  const account = useAccount();
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -116,6 +119,7 @@ export function TopNav() {
                 <Sparkles size={16} strokeWidth={1.75} />
                 Ask
               </Link>
+              <AccountButton className={iconBtn} />
               <button
                 type="button"
                 aria-label={open ? "Close menu" : "Open menu"}
@@ -192,6 +196,20 @@ export function TopNav() {
                   ))}
                 </div>
               </div>
+              {account.enabled && (
+                <div className="mt-2 flex items-center gap-3 rounded-[24px] bg-surface-subtle p-2 pl-4">
+                  <span className="mono-label">Signed in</span>
+                  <span className="min-w-0 flex-1 truncate text-[14px] text-text-secondary">{account.email}</span>
+                  <button
+                    type="button"
+                    onClick={() => void account.signOut()}
+                    className="flex min-h-[40px] items-center gap-2 rounded-full px-3 text-[14px] hover:bg-surface-elevated"
+                  >
+                    <LogOut size={16} strokeWidth={1.6} />
+                    Sign out
+                  </button>
+                </div>
+              )}
             </nav>
           )}
         </div>
