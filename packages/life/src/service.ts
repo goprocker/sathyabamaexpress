@@ -43,6 +43,7 @@ import {
   type WardrobeCategory,
   type WardrobeItem,
 } from "./data.js";
+import { RECIPE_SERVINGS, ingredientBase, matchesKey, recipeCatalog, recipeImageUrl } from "./recipe-catalog.js";
 import type { ModuleId } from "./types.js";
 
 export type Decision = "accepted" | "rejected";
@@ -148,6 +149,125 @@ export class LifeService {
 
   starters() {
     return starterQuestions;
+  }
+
+  /**
+   * Recipe catalogue scaled to `servings`. Pantry coverage is worked out here
+   * (quantity-aware, from the live inventory), never in the UI.
+   */
+  recipes(servings = RECIPE_SERVINGS) {
+    const stock = this.getInputs().inventory.map((i) => {
+      const unit = i.unit.toLowerCase();
+      const kind = unit === "kg" || unit === "g" ? "mass" : unit === "l" || unit === "ml" ? "volume" : "count";
+      const factor = unit === "kg" || unit === "l" ? 1000 : 1;
+      return { name: i.name, kind, base: i.quantity * factor };
+    });
+    const round = (n: number) => Math.round(n * 100) / 100;
+
+    return recipeCatalog.map((r) => {
+      const ingredients = r.ingredients.map((ing) => {
+        const need = ingredientBase(ing, servings);
+        const shown = round(ing.qty * servings);
+        if (!ing.key) {
+          return { name: ing.name, quantity: shown, unit: ing.unit, tracked: false, available: null, enough: true, shortBy: 0 };
+        }
+        const key = ing.key;
+        const matches = stock.filter((s) => s.base > 0 && matchesKey(key, s.name));
+        // Mass and volume compare directly (1 g ~ 1 ml); count vs weight cannot be compared, so presence is enough.
+        const comparable = matches.filter((m) => (m.kind === "count") === (need.kind === "count") || need.kind === "either");
+        if (matches.length === 0) {
+          return { name: ing.name, quantity: shown, unit: ing.unit, tracked: true, available: 0, enough: false, shortBy: shown };
+        }
+        if (comparable.length === 0 || need.kind === "either") {
+          return { name: ing.name, quantity: shown, unit: ing.unit, tracked: true, available: null, enough: true, shortBy: 0 };
+        }
+        const haveBase = comparable.reduce((sum, m) => sum + m.base, 0);
+        const perUnit = need.qty / (shown || 1);
+        const enough = haveBase >= need.qty;
+        return {
+          name: ing.name,
+          quantity: shown,
+          unit: ing.unit,
+          tracked: true,
+          available: round(haveBase / perUnit),
+          enough,
+          shortBy: enough ? 0 : round((need.qty - haveBase) / perUnit),
+        };
+      });
+      const missing = ingredients.filter((i) => !i.enough).map((i) => i.name);
+      return {
+        id: r.id,
+        name: r.name,
+        blurb: r.blurb,
+        region: r.region,
+        course: r.course,
+        veg: r.veg,
+        prepMin: r.prepMin,
+        cookMin: r.cookMin,
+        difficulty: r.difficulty,
+        servings,
+        image: recipeImageUrl(r.image),
+        ingredients,
+        steps: r.steps,
+        missing,
+        canMakeNow: missing.length === 0,
+      };
+    });
+  }
+
+  /** Compact, deterministic snapshot of the household handed to the language model as its only source of facts. */
+  assistantContext() {
+    const { today, events, inputs, all } = this.core();
+    const suggestions = rankSuggestions(all, this.state.decided, this.state.rejectedKinds);
+    const cartTotal = inputs.cart.reduce((sum, c) => sum + c.estimatedPrice, 0);
+    const billsDue7 = events
+      .filter((e) => e.amount && (e.kind === "bill" || e.kind === "vehicle") && daysBetween(today, e.date) <= 7)
+      .reduce((sum, e) => sum + (e.amount ?? 0), 0);
+    const commuteWeek = weekCommuteCost();
+    return {
+      today,
+      spendNext7Days: {
+        groceriesInSmartCart: cartTotal,
+        billsDue: billsDue7,
+        commute: commuteWeek,
+        total: cartTotal + billsDue7 + commuteWeek,
+      },
+      upcomingEvents: events
+        .filter((e) => daysBetween(today, e.date) <= 14)
+        .map((e) => ({ date: e.date, time: e.time, kind: e.kind, title: e.title, detail: e.detail, amount: e.amount })),
+      pantry: inputs.inventory.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        unit: i.unit,
+        daysRemaining: i.daysRemaining ?? null,
+      })),
+      smartCart: inputs.cart.map((c) => ({ name: c.name, quantity: c.quantity, unit: c.unit, estimatedPrice: c.estimatedPrice, reason: c.reason })),
+      obligations: inputs.obligations.map((o) => ({
+        title: o.title,
+        provider: o.provider,
+        status: o.status,
+        dueDate: o.dueDate,
+        amount: o.amount,
+        detail: o.detail,
+      })),
+      forecasts: inputs.forecasts.map((f) => ({ item: f.itemName, type: f.type, severity: f.severity, inDays: f.horizonDays, detail: f.detail })),
+      suggestions: suggestions.slice(0, 8).map((s) => ({ kind: s.kind, title: s.title })),
+      cookableNow: this.recipes()
+        .filter((r) => r.canMakeNow)
+        .map((r) => r.name)
+        .slice(0, 20),
+      summary: this.summary(),
+      mobility: (({ commute: c, vehicle: v, routes, week, weekTotal, savings, stations: st }) => ({
+        commute: c,
+        vehicle: v,
+        routes,
+        week,
+        weekTotal,
+        savings,
+        nearestStations: st.slice(0, 3),
+      }))(this.mobility()),
+      wardrobe: this.closet().map((w) => ({ name: w.name, occasions: w.occasions, worn: w.worn })),
+    };
   }
 
   summary() {

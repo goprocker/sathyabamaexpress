@@ -668,3 +668,142 @@ function hasDiscrepancyOpName(mode: string): string {
     : "PHYSICAL_VERIFICATION_MATCH";
 }
 
+
+export interface ConsumeLine {
+  name: string;
+  /** Matched inventory item, or null when nothing in stock matches. */
+  resourceId: string | null;
+  /** Needed amount in the item's base unit (g, ml or count). 0 means "cannot be measured, skip". */
+  quantity: number;
+}
+
+export interface ConsumeResourcesInput {
+  householdId: string;
+  /** What is being cooked, for the audit trail and timeline. */
+  label: string;
+  servings: number;
+  lines: ConsumeLine[];
+  /** Deduct what is available and record the rest as a shortfall instead of refusing. */
+  allowPartial: boolean;
+  idempotencyKey?: string;
+}
+
+export interface ConsumeResourcesResult {
+  ok: boolean;
+  eventId: string | null;
+  consumed: Array<{ resourceId: string; name: string; deducted: number; formatted: string }>;
+  shortfalls: Array<{ name: string; missing: number; formatted: string }>;
+  applied: boolean;
+}
+
+/**
+ * Deducts ingredient stock for a cooked recipe: FIFO by expiry across active
+ * lots, all-or-nothing unless `allowPartial`. Deterministic; never LLM output.
+ */
+export function consumeResources(store: HouseholdStore, input: ConsumeResourcesInput): ConsumeResourcesResult {
+  const cached = store.getIdempotentResult<ConsumeResourcesResult>(input.idempotencyKey);
+  if (cached) return cached;
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const eventId = `evt_cook_${crypto.randomUUID().slice(0, 8)}`;
+
+  // Plan against current state first so a refusal leaves inventory untouched.
+  const state = store.getState();
+  const shortfalls: ConsumeResourcesResult["shortfalls"] = [];
+  const planned: Array<{ line: ConsumeLine; resource: Resource; take: number }> = [];
+  for (const line of input.lines) {
+    if (line.quantity <= 0) continue;
+    const resource = line.resourceId ? state.resources.find((r) => r.id === line.resourceId) : undefined;
+    if (!resource) {
+      shortfalls.push({ name: line.name, missing: line.quantity, formatted: "not in inventory" });
+      continue;
+    }
+    const have = Math.max(0, resource.onHandQuantity);
+    const take = Math.min(have, line.quantity);
+    if (take < line.quantity) {
+      const missing = line.quantity - take;
+      shortfalls.push({
+        name: line.name,
+        missing,
+        formatted: formatQuantityDisplay(missing, resource.baseUnit, resource.displayUnit),
+      });
+    }
+    if (take > 0) planned.push({ line, resource, take });
+  }
+
+  if (shortfalls.length > 0 && !input.allowPartial) {
+    return { ok: false, eventId: null, consumed: [], shortfalls, applied: false };
+  }
+
+  const consumed: ConsumeResourcesResult["consumed"] = [];
+  store.mutate(
+    (draft) => {
+      for (const { line, resource, take } of planned) {
+        const res = draft.resources.find((r) => r.id === resource.id);
+        if (!res) continue;
+        res.onHandQuantity = Math.max(0, res.onHandQuantity - take);
+        res.updatedAt = nowIso;
+
+        let remaining = take;
+        const lots = draft.lots
+          .filter((l) => l.resourceId === res.id && l.status === "ACTIVE")
+          .sort((a, b) => (a.expiresAt || "9999").localeCompare(b.expiresAt || "9999"));
+        for (const lot of lots) {
+          if (remaining <= 0) break;
+          const deduct = Math.min(lot.quantityRemaining, remaining);
+          lot.quantityRemaining -= deduct;
+          remaining -= deduct;
+          if (lot.quantityRemaining <= 0) lot.status = "DEPLETED";
+        }
+
+        consumed.push({
+          resourceId: res.id,
+          name: line.name,
+          deducted: take,
+          formatted: formatQuantityDisplay(take, res.baseUnit, res.displayUnit),
+        });
+      }
+
+      draft.resources = draft.resources.map((r) => computeResourceDerivedFields(r, draft.lots));
+
+      draft.events.unshift({
+        id: eventId,
+        householdId: input.householdId,
+        idempotencyKey: input.idempotencyKey || `cook_${eventId}`,
+        type: "MEAL_CONSUMED",
+        source: "ui",
+        confidence: 1,
+        payload: { recipe: input.label, servings: input.servings, consumed, shortfalls },
+        createdAt: nowIso,
+      });
+
+      draft.timeline.unshift({
+        id: `tl_cook_${crypto.randomUUID().slice(0, 8)}`,
+        householdId: input.householdId,
+        eventId,
+        timestamp: nowIso,
+        timeFormatted: now.toTimeString().slice(0, 5),
+        title: `Prepared ${input.label} (${input.servings} servings)`,
+        description: consumed.length
+          ? `Deducted ${consumed.map((c) => `${c.formatted} ${c.name}`).join(", ")} from inventory.${
+              shortfalls.length ? ` Short on ${shortfalls.map((s) => s.name).join(", ")}.` : ""
+            }`
+          : "No tracked ingredients were deducted.",
+        category: "meal",
+        status: shortfalls.length ? "WARNING" : "SUCCESS",
+      });
+    },
+    {
+      householdId: input.householdId,
+      actor: "InventoryEngine",
+      operation: "RECIPE_PREPARED",
+      entityType: "Recipe",
+      entityId: input.label,
+    },
+  );
+
+  const result: ConsumeResourcesResult = { ok: true, eventId, consumed, shortfalls, applied: true };
+  store.setIdempotentResult(input.idempotencyKey, result);
+  return result;
+}

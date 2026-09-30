@@ -404,3 +404,58 @@ export async function parseObligationWithOpenAI(
   return parseObligationDeterministic(rawText);
 }
 
+
+
+export interface ContextualAnswer {
+  text: string;
+  bullets: string[];
+  modules: string[];
+}
+
+const ASSISTANT_SYSTEM_PROMPT = `You are Livora, a household assistant. You are given a JSON snapshot of ONE household (timeline, pantry, smart cart, bills and obligations, forecasts, commute and EV, wardrobe). That snapshot is your only source of facts.
+Rules:
+- Answer every question in the context of this household. Never reply with a menu of example questions.
+- Greetings or "who are you": introduce yourself as Livora in one sentence, then give the 2-3 most relevant things from the snapshot right now (what is due soon, what is running low).
+- For household spending questions use spendNext7Days and list each component.
+- If an image is attached, say briefly what it shows, then relate it to this household: a receipt or grocery photo against pantry and cart, a bill against obligations, clothing against the wardrobe and upcoming occasions, a vehicle or route against mobility. Read text in the image exactly; if it is unclear, say so instead of guessing.
+- Use only numbers, dates, names and amounts present in the snapshot. Do not calculate new totals unless every input is in the snapshot; then show the sum as bullets, one per component (e.g. groceries, bills, commute). If the snapshot lacks the answer, say exactly what is missing.
+- Questions unrelated to the household: answer briefly and helpfully, then tie back to the household only if natural.
+- Reply in the language the user wrote in (English, Tamil, or Tanglish). Keep "text" to 1-2 short sentences; put specifics in "bullets" (max 6, each under 120 characters). Amounts in rupees as ₹.
+- "modules" lists which snapshot areas you used, from: timeline, pantry, cart, admin, mobility, circular.
+Return JSON: {"text": string, "bullets": string[], "modules": string[]}.`;
+
+export async function answerWithHouseholdContext(options: {
+  question: string;
+  context: unknown;
+  history?: Array<{ q: string; a: string }>;
+  imageDataUrl?: string;
+}): Promise<ContextualAnswer> {
+  const messages: Array<{ role: "system" | "user"; content: string | unknown[] }> = [
+    { role: "system", content: ASSISTANT_SYSTEM_PROMPT },
+    { role: "user", content: `Household snapshot:\n${JSON.stringify(options.context)}` },
+  ];
+  for (const turn of (options.history ?? []).slice(-4)) {
+    messages.push({ role: "user", content: `Earlier question: ${turn.q}\nEarlier answer: ${turn.a}` });
+  }
+  messages.push({
+    role: "user",
+    content: options.imageDataUrl
+      ? [
+          { type: "text", text: `Question: ${options.question}` },
+          { type: "image_url", image_url: { url: options.imageDataUrl } },
+        ]
+      : `Question: ${options.question}`,
+  });
+
+  const model = options.imageDataUrl
+    ? process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini"
+    : process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const raw = (await requestJson(messages, model)) as Partial<ContextualAnswer>;
+  const text = typeof raw.text === "string" ? raw.text.trim() : "";
+  if (!text) throw new Error("OpenAI returned an empty answer.");
+  return {
+    text,
+    bullets: Array.isArray(raw.bullets) ? raw.bullets.filter((b): b is string => typeof b === "string").slice(0, 6) : [],
+    modules: Array.isArray(raw.modules) ? raw.modules.filter((m): m is string => typeof m === "string") : [],
+  };
+}

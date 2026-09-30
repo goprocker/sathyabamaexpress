@@ -9,7 +9,7 @@ import { CircularPage } from "@/features/circular/CircularPage";
 import { AssistantPage } from "@/features/assistant/AssistantPage";
 import { NotificationsPage } from "@/features/notifications/NotificationsPage";
 import { PlansPage } from "@/features/plans/PlansPage";
-import { PantryPage } from "@/features/inventory/PantryPage";
+import { KitchenInventoryPage } from "@/features/inventory/KitchenInventoryPage";
 import { InventoryItemPage } from "@/features/inventory/InventoryItemPage";
 import { ReceiptPage } from "@/features/inventory/ReceiptPage";
 import { MealPlannerPage } from "@/features/meals/MealPlannerPage";
@@ -96,7 +96,7 @@ const plansRoute = createRoute({
 const pantryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/pantry",
-  component: () => shell(<PantryPage />),
+  component: () => shell(<KitchenInventoryPage />),
 });
 
 const inventoryItemRoute = createRoute({
@@ -115,6 +115,9 @@ const recipesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/recipes",
   component: () => shell(<RecipesPage />),
+  validateSearch: (search: Record<string, unknown>): { open?: string } => ({
+    open: typeof search.open === "string" ? search.open : undefined,
+  }),
 });
 
 const cartRoute = createRoute({
@@ -192,11 +195,11 @@ const onboardingRoute = createRoute({
   component: () => shell(<OnboardingPage />),
 });
 
-// Legacy route — redirect /inventory to /pantry
+// /inventory and /pantry both show the kitchen Inventory section
 const inventoryRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inventory",
-  component: () => shell(<PantryPage />),
+  component: () => shell(<KitchenInventoryPage />),
 });
 
 // Marketing landing page — no app chrome (own nav + footer).

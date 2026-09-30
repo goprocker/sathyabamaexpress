@@ -28,7 +28,9 @@ export async function transcribeAudioWithSarvam(options: {
       const blob = new Blob([options.audioBuffer], {
         type: options.mimeType || "audio/wav",
       });
-      formData.append("file", blob, "speech.wav");
+      const mime = options.mimeType || "audio/wav";
+      const ext = mime.includes("webm") ? "webm" : mime.includes("ogg") ? "ogg" : mime.includes("mp4") ? "mp4" : mime.includes("mpeg") ? "mp3" : "wav";
+      formData.append("file", blob, `speech.${ext}`);
       formData.append("model", process.env.SARVAM_STT_MODEL || "saarika:v2");
       formData.append("language_code", options.languageCode || "ta-IN");
 

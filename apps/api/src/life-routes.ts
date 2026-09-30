@@ -13,11 +13,16 @@ import {
   WardrobeAddInputSchema,
 } from "@household/contracts";
 import type { HouseholdStore } from "@household/db";
-import { listInventory, runForecastEngine } from "@household/domain";
+import { consumeResources, listInventory, runForecastEngine, type ConsumeLine } from "@household/domain";
+import { answerWithHouseholdContext, transcribeAudioWithSarvam } from "@household/integrations";
 import {
   budgetData,
   daysBetween,
+  findCatalogRecipe,
+  ingredientBase,
   LifeService,
+  matchesKey,
+  RECIPE_SERVINGS,
   smartCart,
   todayIso,
   weeklyMealPlan,
@@ -163,9 +168,138 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
     return { ok: true };
   });
 
+  const MODULE_SOURCES: Record<string, { label: string; href: string }> = {
+    timeline: { label: "Timeline", href: "/timeline" },
+    pantry: { label: "Pantry", href: "/pantry" },
+    cart: { label: "Smart cart", href: "/cart" },
+    admin: { label: "Life Administration", href: "/obligations" },
+    mobility: { label: "Smart Mobility", href: "/mobility" },
+    circular: { label: "Circular Living", href: "/circular" },
+  };
+
+  // Every question is answered by the language model against a deterministic
+  // snapshot of this household. The rule-based engine is only the fallback
+  // when no key is configured or the provider call fails.
+  const answerQuestion = async (
+    service: LifeService,
+    question: string,
+    history?: Array<{ q: string; a: string }>,
+    imageDataUrl?: string,
+  ) => {
+    if (process.env.OPENAI_API_KEY?.trim()) {
+      try {
+        const out = await answerWithHouseholdContext({ question, context: service.assistantContext(), history, imageDataUrl });
+        return {
+          text: out.text,
+          bullets: out.bullets,
+          sources: out.modules.flatMap((m) => MODULE_SOURCES[m] ?? []),
+          provider: "openai" as const,
+        };
+      } catch (err) {
+        app.log.warn({ err }, "assistant: OpenAI failed, using rule-based fallback");
+      }
+    }
+    return { ...service.ask(question), provider: "rule-based" as const };
+  };
+
   app.post("/api/life/assistant", async (request) => {
     const body = AssistantAskInputSchema.parse(request.body ?? {});
-    return { answer: svc(request).ask(body.question) };
+    return { answer: await answerQuestion(svc(request), body.question, body.history, body.image) };
+  });
+
+  // Voice: Sarvam speech-to-text, then the same contextual answer.
+  app.post("/api/life/assistant/voice", async (request, reply) => {
+    let audio: Buffer | undefined;
+    let mimeType: string | undefined;
+    let languageCode = "en-IN";
+    let history: Array<{ q: string; a: string }> | undefined;
+    for await (const part of request.parts()) {
+      if (part.type === "file") {
+        audio = await part.toBuffer();
+        mimeType = part.mimetype;
+      } else if (part.fieldname === "languageCode") {
+        languageCode = String(part.value);
+      } else if (part.fieldname === "history") {
+        try {
+          history = AssistantAskInputSchema.shape.history.parse(JSON.parse(String(part.value)));
+        } catch {
+          history = undefined;
+        }
+      }
+    }
+    if (!audio || audio.length === 0) return reply.code(400).send({ error: "Audio is required." });
+    try {
+      const stt = await transcribeAudioWithSarvam({ audioBuffer: audio, mimeType, languageCode });
+      const question = stt.rawTranscript.trim().slice(0, 500);
+      return { transcript: question, answer: await answerQuestion(svc(request), question, history) };
+    } catch (err) {
+      app.log.warn({ err }, "assistant: transcription failed");
+      return reply.code(502).send({ error: "Could not transcribe audio." });
+    }
+  });
+
+  const servingsFrom = (raw: unknown): number => {
+    const n = Math.round(Number(raw));
+    return Number.isFinite(n) && n >= 1 && n <= 12 ? n : RECIPE_SERVINGS;
+  };
+
+  app.get("/api/life/recipes", async (request) => ({
+    recipes: svc(request).recipes(servingsFrom(qs(request).servings)),
+  }));
+
+  // Cooking a recipe deducts its tracked ingredients from canonical inventory.
+  app.post("/api/life/recipes/:id/prepare", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const recipe = findCatalogRecipe(id);
+    if (!recipe) return reply.code(404).send({ error: `Recipe not found: ${id}` });
+
+    const body = (request.body ?? {}) as { servings?: unknown; allowPartial?: unknown; idempotencyKey?: unknown };
+    const servings = servingsFrom(body.servings);
+    const householdId = qs(request).householdId ?? DEFAULT_HOUSEHOLD;
+    const resources = store.getState().resources.filter((r) => r.householdId === householdId);
+
+    const lines: ConsumeLine[] = recipe.ingredients.flatMap((ing) => {
+      if (!ing.key) return [];
+      const key = ing.key;
+      const need = ingredientBase(ing, servings);
+      // Prefer the matching item with the most stock so a partial jar never blocks a full pack.
+      const match = resources
+        .filter((r) => matchesKey(key, r.canonicalName))
+        .sort((a, b) => b.onHandQuantity - a.onHandQuantity)[0];
+      // Count items (eggs, pav) and weight items cannot be converted into each other; leave those untouched.
+      const measurable = !match || (match.baseUnit === "count") === (need.kind === "count") || need.kind === "either";
+      if (!measurable) return [];
+      return [{ name: ing.name, resourceId: match?.id ?? null, quantity: need.qty }];
+    });
+
+    const result = consumeResources(store, {
+      householdId,
+      label: recipe.name,
+      servings,
+      lines,
+      allowPartial: body.allowPartial === true,
+      idempotencyKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined,
+    });
+    if (!result.ok) {
+      return reply.code(409).send({ error: "Some ingredients are short.", shortfalls: result.shortfalls });
+    }
+    return { ...result, recipe: recipe.name, servings };
+  });
+
+  // Bills already confirmed into inventory, newest first.
+  app.get("/api/life/receipts/recent", async (request) => {
+    const householdId = qs(request).householdId ?? DEFAULT_HOUSEHOLD;
+    const receipts = store
+      .getState()
+      .receiptUploads.filter((r) => r.householdId === householdId && r.status === "COMMITTED")
+      .slice(0, 6)
+      .map((r) => ({
+        id: r.id,
+        vendor: r.vendorName,
+        date: r.committedAt ?? r.purchaseDate,
+        items: r.items.map((i) => ({ name: i.canonicalName, quantity: i.quantity, unit: i.unit })),
+      }));
+    return { receipts };
   });
 
   // ── Notifications ─────────────────────────────────────────────────────

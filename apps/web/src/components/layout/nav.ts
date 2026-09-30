@@ -8,6 +8,7 @@ import {
   FileCheck2,
   Home,
   Mic,
+  Package,
   Receipt,
   Recycle,
   Rocket,
@@ -78,7 +79,7 @@ export const navGroups: NavGroup[] = [
     module: "kitchen",
     items: [
       { to: "/kitchen", label: "Kitchen", hint: "Overview and status", icon: ChefHat },
-      { to: "/pantry", label: "Pantry", hint: "Stock and expiry", icon: ChefHat },
+      { to: "/inventory", label: "Inventory", hint: "Stock from your bills", icon: Package },
       { to: "/recipes", label: "Recipes", hint: "Cook from what you have", icon: UtensilsCrossed },
       { to: "/cart", label: "Smart Cart", hint: "What to buy next", icon: ShoppingCart },
       { to: "/meals", label: "Meal Plan", hint: "Week at a glance", icon: CalendarDays },

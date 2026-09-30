@@ -21,6 +21,7 @@ export type Circular = ReturnType<LifeService["circular"]>;
 export type OccasionPlan = ReturnType<LifeService["occasionPlan"]>;
 export type Notifications = ReturnType<LifeService["notifications"]>;
 export type Answer = ReturnType<LifeService["ask"]>;
+export type CatalogRecipeView = ReturnType<LifeService["recipes"]>[number];
 export type Plans = ReturnType<LifeService["plans"]>;
 export type SearchHit = ReturnType<LifeService["search"]>[number];
 export type LeaveBy = ReturnType<LifeService["leaveBy"]>;
@@ -155,8 +156,74 @@ export const setCollisionApplied = (id: string, enabled: boolean) =>
     return { ok: true };
   });
 
-export const askAssistant = async (question: string): Promise<Answer> =>
-  (await write<{ answer: Answer }>("/life/assistant", "POST", { question }, (s) => ({ answer: s.ask(question) }))).answer;
+export interface AssistantTurn {
+  q: string;
+  a: string;
+}
+
+export const askAssistant = async (question: string, history: AssistantTurn[] = [], image?: string): Promise<Answer> =>
+  (await write<{ answer: Answer }>("/life/assistant", "POST", { question, history, image }, (s) => ({ answer: s.ask(question) })))
+    .answer;
+
+/** Sends recorded audio to the API (Sarvam speech-to-text), which answers the transcript in household context. */
+export async function askAssistantByVoice(
+  audio: Blob,
+  history: AssistantTurn[] = [],
+): Promise<{ transcript: string; answer: Answer }> {
+  const form = new FormData();
+  form.append("history", JSON.stringify(history));
+  form.append("file", audio, "speech.webm");
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/life/assistant/voice`, { method: "POST", body: form });
+  } catch {
+    throw new Error("Voice service unreachable.");
+  }
+  if (!res.ok) throw new Error("Could not understand the audio.");
+  return (await res.json()) as { transcript: string; answer: Answer };
+}
+
+export const getRecipeCatalog = async (servings = 4) =>
+  (await read<{ recipes: CatalogRecipeView[] }>(`/life/recipes?servings=${servings}`, (s) => ({ recipes: s.recipes(servings) })))
+    .recipes;
+
+export interface PrepareResult {
+  ok: boolean;
+  recipe: string;
+  servings: number;
+  consumed: Array<{ name: string; formatted: string }>;
+  shortfalls: Array<{ name: string; formatted: string }>;
+}
+
+/** Deducts the recipe's ingredients from inventory. Needs the API: there is no offline equivalent. */
+export async function prepareRecipe(
+  id: string,
+  opts: { servings: number; allowPartial: boolean; idempotencyKey: string },
+): Promise<PrepareResult> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/life/recipes/${encodeURIComponent(id)}/prepare`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(opts),
+    });
+  } catch {
+    throw new Error("The kitchen service is unreachable, so inventory was not changed.");
+  }
+  const body = (await res.json().catch(() => ({}))) as Partial<PrepareResult> & { error?: string };
+  if (!res.ok) throw new Error(body.error ?? "Could not prepare this recipe.");
+  return body as PrepareResult;
+}
+
+export interface RecentReceipt {
+  id: string;
+  vendor: string;
+  date: string;
+  items: Array<{ name: string; quantity: number; unit: string }>;
+}
+
+export const getRecentReceipts = async () =>
+  (await read<{ receipts: RecentReceipt[] }>("/life/receipts/recent", () => ({ receipts: [] }))).receipts;
 
 // ── Notifications ──────────────────────────────────────────────────────────
 

@@ -997,6 +997,16 @@ export type LifeDecisionInput = z.infer<typeof LifeDecisionInputSchema>;
 
 export const AssistantAskInputSchema = z.object({
   question: z.string().trim().min(1).max(500),
+  history: z
+    .array(z.object({ q: z.string().max(500), a: z.string().max(1500) }))
+    .max(6)
+    .optional(),
+  /** Optional photo (receipt, bill, outfit, pantry shelf) as a resized data URL. */
+  image: z
+    .string()
+    .max(3_000_000)
+    .regex(/^data:image\/(png|jpe?g|webp);base64,/)
+    .optional(),
 });
 export type AssistantAskInput = z.infer<typeof AssistantAskInputSchema>;
 

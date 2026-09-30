@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useSearch } from "@tanstack/react-router";
-import { Mic, SendHorizontal, Sparkles } from "lucide-react";
+import { ImagePlus, Mic, SendHorizontal, Sparkles, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { useAsk, useStarters } from "@/hooks/life";
+import { useAsk, useAskByVoice, useStarters } from "@/hooks/life";
 import type { Answer } from "@/lib/lifeApi";
 
 interface Turn {
   id: number;
   q: string;
+  image?: string;
   a: Answer | null;
 }
 
@@ -22,6 +23,44 @@ interface RecognitionLike {
 }
 type RecognitionCtor = new () => RecognitionLike;
 
+/** Downscale to keep the upload small (the API caps request size) while staying legible for receipts. */
+function resizeImage(file: File, maxSide = 1280): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        reject(new Error("Canvas unavailable"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.8));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Unreadable image"));
+    };
+    img.src = url;
+  });
+}
+
+function canRecord(): boolean {
+  return typeof window !== "undefined" && typeof MediaRecorder !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
+}
+
+function speak(text: string) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+}
+
 function getRecognition(): RecognitionCtor | null {
   const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
@@ -29,27 +68,62 @@ function getRecognition(): RecognitionCtor | null {
 
 export function AssistantPage() {
   const askMutation = useAsk();
+  const voiceMutation = useAskByVoice();
   const starters = useStarters().data ?? [];
   const search = useSearch({ strict: false }) as { q?: string };
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [listening, setListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [attachment, setAttachment] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const idRef = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
   const seeded = useRef(false);
-  const voiceSupported = typeof window !== "undefined" && getRecognition() !== null;
+  const turnsRef = useRef<Turn[]>([]);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  turnsRef.current = turns;
+  const voiceSupported = typeof window !== "undefined" && (canRecord() || getRecognition() !== null);
 
-  const ask = (question: string) => {
+  const history = () =>
+    turnsRef.current.flatMap((t) => (t.a ? [{ q: t.q, a: [t.a.text, ...(t.a.bullets ?? [])].join(" ").slice(0, 1500) }] : []));
+
+  const ask = (question: string, spoken = false, image?: string) => {
     const text = question.trim();
     if (!text) return;
     const id = ++idRef.current;
-    setTurns((t) => [...t, { id, q: text, a: null }]);
-    const settle = (a: Answer) => setTurns((t) => t.map((x) => (x.id === id ? { ...x, a } : x)));
-    askMutation.mutate(text, {
-      onSuccess: settle,
-      onError: () =>
-        settle({ text: "I couldn't reach the assistant service. Please try again.", sources: [] }),
-    });
+    const prior = history();
+    setTurns((t) => [...t, { id, q: text, ...(image ? { image } : {}), a: null }]);
+    const settle = (a: Answer) => {
+      setTurns((t) => t.map((x) => (x.id === id ? { ...x, a } : x)));
+      if (spoken) speak(a.text);
+    };
+    askMutation.mutate(
+      { question: text, history: prior, ...(image ? { image } : {}) },
+      {
+        onSuccess: settle,
+        onError: () => settle({ text: "I couldn't reach the assistant service. Please try again.", sources: [] }),
+      },
+    );
+  };
+
+  const askAudio = (audio: Blob) => {
+    const id = ++idRef.current;
+    const prior = history();
+    setTurns((t) => [...t, { id, q: "Listening…", a: null }]);
+    voiceMutation.mutate(
+      { audio, history: prior },
+      {
+        onSuccess: ({ transcript, answer }) => {
+          setTurns((t) => t.map((x) => (x.id === id ? { ...x, q: transcript, a: answer } : x)));
+          speak(answer.text);
+        },
+        onError: () => {
+          setTurns((t) => t.filter((x) => x.id !== id));
+          setVoiceError("I couldn't hear that. Try again, or type your question.");
+        },
+      },
+    );
   };
 
   useEffect(() => {
@@ -66,11 +140,23 @@ export function AssistantPage() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    ask(input);
+    if (!input.trim() && !attachment) return;
+    ask(input.trim() || "What is this, and what should I do about it?", false, attachment ?? undefined);
     setInput("");
+    setAttachment(null);
   };
 
-  const listen = () => {
+  const pickImage = async (file: File | undefined) => {
+    if (!file) return;
+    setVoiceError(null);
+    try {
+      setAttachment(await resizeImage(file));
+    } catch {
+      setVoiceError("I couldn't read that image. Try a JPG or PNG.");
+    }
+  };
+
+  const listenWithBrowser = () => {
     const Ctor = getRecognition();
     if (!Ctor) return;
     const rec = new Ctor();
@@ -78,12 +164,41 @@ export function AssistantPage() {
     rec.interimResults = false;
     rec.onresult = (e) => {
       const heard = e.results[0]?.[0]?.transcript;
-      if (heard) ask(heard);
+      if (heard) ask(heard, true);
     };
     rec.onend = () => setListening(false);
     rec.onerror = () => setListening(false);
     setListening(true);
     rec.start();
+  };
+
+  const listen = async () => {
+    setVoiceError(null);
+    if (recorderRef.current) {
+      recorderRef.current.stop();
+      return;
+    }
+    if (!canRecord()) {
+      listenWithBrowser();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      rec.ondataavailable = (e) => chunks.push(e.data);
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        recorderRef.current = null;
+        setListening(false);
+        if (chunks.length) askAudio(new Blob(chunks, { type: rec.mimeType || "audio/webm" }));
+      };
+      recorderRef.current = rec;
+      rec.start();
+      setListening(true);
+    } catch {
+      setVoiceError("Microphone access is blocked. Allow it in the browser to use voice.");
+    }
   };
 
   return (
@@ -116,9 +231,14 @@ export function AssistantPage() {
       <div className="space-y-5 pb-4" aria-live="polite">
         {turns.map((t) => (
           <div key={t.id} className="space-y-3">
-            <p className="ml-auto w-fit max-w-[85%] rounded-[28px] rounded-br-[10px] bg-accent px-5 py-3 text-[16px] text-accent-text">
-              {t.q}
-            </p>
+            <div className="ml-auto w-fit max-w-[85%] space-y-2">
+              {t.image && (
+                <img src={t.image} alt="Attached by you" className="ml-auto max-h-56 rounded-[20px] object-cover" />
+              )}
+              <p className="ml-auto w-fit rounded-[28px] rounded-br-[10px] bg-accent px-5 py-3 text-[16px] text-accent-text">
+                {t.q}
+              </p>
+            </div>
             {t.a ? (
               <div className="glass max-w-[92%] rounded-[28px] rounded-bl-[10px] p-5" style={{ animation: "fadeInUp 300ms var(--ease-out) both" }}>
                 <p className="text-[19px] leading-snug tracking-[-0.02em]">{t.a.text}</p>
@@ -154,6 +274,31 @@ export function AssistantPage() {
       </div>
 
       <form onSubmit={submit} className="sticky bottom-24 md:bottom-6">
+        {attachment && (
+          <div className="glass mb-2 flex w-fit items-center gap-2 rounded-[20px] p-1.5">
+            <img src={attachment} alt="Image to send" className="size-14 rounded-[14px] object-cover" />
+            <button
+              type="button"
+              onClick={() => setAttachment(null)}
+              aria-label="Remove image"
+              className="flex size-11 items-center justify-center rounded-full hover:bg-surface-elevated"
+            >
+              <X size={16} strokeWidth={1.75} />
+            </button>
+          </div>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          tabIndex={-1}
+          aria-hidden
+          onChange={(e) => {
+            void pickImage(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+        />
         <div className="glass flex items-center gap-2 rounded-full p-1.5 pl-5">
           <label htmlFor="assistant-input" className="sr-only">
             Message
@@ -162,26 +307,37 @@ export function AssistantPage() {
             id="assistant-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="What do I need to complete tomorrow?"
+            placeholder={attachment ? "Ask about this image…" : "What do I need to complete tomorrow?"}
             className="h-11 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-text-tertiary"
           />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            aria-label="Attach image"
+            className="flex size-11 items-center justify-center rounded-full transition-colors hover:bg-surface-elevated"
+          >
+            <ImagePlus size={18} strokeWidth={1.6} />
+          </button>
           {voiceSupported && (
             <button
               type="button"
               onClick={listen}
-              aria-label={listening ? "Listening" : "Speak"}
+              aria-label={listening ? "Stop recording" : "Speak"}
               aria-pressed={listening}
               className={`flex size-11 items-center justify-center rounded-full transition-colors ${listening ? "bg-tint-coral text-white" : "hover:bg-surface-elevated"}`}
             >
               <Mic size={18} strokeWidth={1.6} />
             </button>
           )}
-          <button type="submit" aria-label="Send" disabled={!input.trim()} className="btn-primary !min-h-0 size-11 !rounded-full !p-0 disabled:opacity-40">
+          <button type="submit" aria-label="Send" disabled={!input.trim() && !attachment} className="btn-primary !min-h-0 size-11 !rounded-full !p-0 disabled:opacity-40">
             <SendHorizontal size={17} strokeWidth={1.75} />
           </button>
         </div>
-        <p className="mono-label mt-2 px-4">
-          Rule-based answers over your local sample data. No language model is connected yet.
+        <p className="mono-label mt-2 px-4" role={voiceError ? "alert" : undefined}>
+          {voiceError ??
+            (listening
+              ? "Listening… tap the mic again to send."
+              : "Answers use your timeline, pantry, bills, commute and wardrobe.")}
         </p>
       </form>
     </div>
