@@ -7,9 +7,15 @@ import { Mic, Square } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button, StatusPill } from "@/components/ui/primitives";
 import { transcribeVoice, type VoiceTranscriptionResult } from "@/lib/api";
+import { authEnabled } from "@/lib/auth";
 import { voiceUtterance } from "@/mocks/data";
 
-type Phase = "idle" | "listening" | "processing" | "result";
+type Phase = "idle" | "listening" | "processing" | "result" | "error";
+
+const LANGUAGES = [
+  { code: "ta-IN", label: "தமிழ்" },
+  { code: "en-IN", label: "English" },
+] as const;
 
 export function VoicePage() {
   const [phase, setPhase] = useState<Phase>("idle");
@@ -20,6 +26,10 @@ export function VoicePage() {
     servings: voiceUtterance.event.servings,
     plannedDate: "Tomorrow",
   });
+  const [error, setError] = useState<string | null>(null);
+  const [typed, setTyped] = useState("");
+  const [language, setLanguage] = useState<(typeof LANGUAGES)[number]["code"]>("ta-IN");
+  const recorder = useRef<MediaRecorder | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
@@ -30,32 +40,86 @@ export function VoicePage() {
     if (autoStopTimer.current) clearTimeout(autoStopTimer.current);
   }, []);
 
-  async function runVoicePipeline() {
+  async function runVoicePipeline(input?: { audioBlob?: Blob; text?: string }) {
     setPhase("processing");
-    const response = await transcribeVoice();
-    setResult(response);
-    void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    void queryClient.invalidateQueries({ queryKey: ["inventory"] });
-    void queryClient.invalidateQueries({ queryKey: ["actions"] });
-    void queryClient.invalidateQueries({ queryKey: ["activity"] });
-    void queryClient.invalidateQueries({ queryKey: ["ripple"] });
-    setPhase("result");
+    setError(null);
+    try {
+      const response = await transcribeVoice(
+        input?.audioBlob
+          ? { audioBlob: input.audioBlob, languageCode: language }
+          : input?.text
+            ? { transcriptOverride: input.text, languageCode: language }
+            : undefined,
+      );
+      setResult(response);
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      void queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      void queryClient.invalidateQueries({ queryKey: ["actions"] });
+      void queryClient.invalidateQueries({ queryKey: ["activity"] });
+      void queryClient.invalidateQueries({ queryKey: ["ripple"] });
+      setPhase("result");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+      setPhase("error");
+    }
   }
 
-  function start() {
-    setPhase("listening");
-    setSeconds(0);
-    timer.current = setInterval(() => setSeconds((s) => s + 1), 1000);
-    autoStopTimer.current = setTimeout(() => {
-      if (timer.current) clearInterval(timer.current);
-      void runVoicePipeline();
-    }, 2000);
+  async function start() {
+    setError(null);
+    // Signed out: the guided demo plays a sample sentence. Signed in: record for real.
+    if (!authEnabled) {
+      setPhase("listening");
+      setSeconds(0);
+      timer.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+      autoStopTimer.current = setTimeout(() => {
+        if (timer.current) clearInterval(timer.current);
+        void runVoicePipeline();
+      }, 2000);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      rec.ondataavailable = (e) => chunks.push(e.data);
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (timer.current) clearInterval(timer.current);
+        recorder.current = null;
+        const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+        if (blob.size > 0) void runVoicePipeline({ audioBlob: blob });
+        else {
+          setError("I didn't hear anything. Try again, or type it below.");
+          setPhase("error");
+        }
+      };
+      recorder.current = rec;
+      rec.start();
+      setSeconds(0);
+      timer.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+      setPhase("listening");
+    } catch {
+      setError("Microphone access is blocked. Allow it in your browser, or type it below.");
+      setPhase("error");
+    }
   }
 
   function stop() {
+    if (recorder.current) {
+      recorder.current.stop();
+      return;
+    }
     if (timer.current) clearInterval(timer.current);
     if (autoStopTimer.current) clearTimeout(autoStopTimer.current);
     void runVoicePipeline();
+  }
+
+  function submitTyped(e: React.FormEvent) {
+    e.preventDefault();
+    const text = typed.trim();
+    if (!text) return;
+    setTyped("");
+    void runVoicePipeline({ text });
   }
 
   return (
@@ -68,8 +132,40 @@ export function VoicePage() {
             <p className="body-text text-text-secondary">
               Tap and say what you need.
             </p>
-            <VoiceButton onClick={start} label="Start listening" />
+            <VoiceButton onClick={() => void start()} label="Start listening" />
             <p className="text-meta">e.g. “Naalaikku 6 perukku biryani pannanum.”</p>
+            {authEnabled && (
+              <div className="space-y-4 border-t border-border pt-6 text-left">
+                <div role="group" aria-label="Language" className="flex justify-center gap-2">
+                  {LANGUAGES.map((l) => (
+                    <button
+                      key={l.code}
+                      type="button"
+                      aria-pressed={language === l.code}
+                      onClick={() => setLanguage(l.code)}
+                      className={`min-h-[44px] rounded-full px-4 text-[14px] ${
+                        language === l.code ? "bg-accent text-accent-text" : "bg-surface-subtle text-text-secondary"
+                      }`}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+                <form onSubmit={submitTyped} className="flex gap-2">
+                  <label htmlFor="voice-typed" className="sr-only">Or type your request</label>
+                  <input
+                    id="voice-typed"
+                    value={typed}
+                    onChange={(e) => setTyped(e.target.value)}
+                    placeholder="Or type it here"
+                    className="h-11 min-w-0 flex-1 rounded-[8px] border border-border bg-surface px-3 text-[15px] outline-none focus:border-accent"
+                  />
+                  <Button type="submit" variant="secondary" disabled={!typed.trim()}>
+                    Send
+                  </Button>
+                </form>
+              </div>
+            )}
           </>
         )}
 
@@ -92,7 +188,31 @@ export function VoicePage() {
           </>
         )}
 
-        {phase === "result" && (
+        {phase === "error" && (
+          <>
+            <p role="alert" className="body-text text-danger">
+              {error}
+            </p>
+            <Button variant="secondary" onClick={() => setPhase("idle")}>
+              Try again
+            </Button>
+          </>
+        )}
+
+        {phase === "result" && !result.dish && (
+          <>
+            <p className="italic body-text text-text-primary">“{result.transcript}”</p>
+            <p className="text-meta">
+              I heard you, but that wasn't a meal plan. Try something like “dinner tomorrow for 4”.
+            </p>
+            <Button variant="ghost" onClick={() => setPhase("idle")}>
+              Again
+              <Mic size={14} strokeWidth={1.75} />
+            </Button>
+          </>
+        )}
+
+        {phase === "result" && !!result.dish && (
           <>
             <p className="italic body-text text-text-primary">
               “{result.transcript}”

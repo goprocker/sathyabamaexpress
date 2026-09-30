@@ -3,7 +3,7 @@
 // graceful fallback to the deterministic seed store if the server is offline.
 
 import * as seed from "../mocks/data";
-import { authHeaders } from "./auth";
+import { authEnabled, authHeaders } from "./auth";
 import type {
   ActionItem,
   ActionStatus,
@@ -32,9 +32,26 @@ export const API_BASE =
     ? import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "")
     : "/api";
 
+/** A request the server refused or could not answer. Only thrown for signed-in users. */
+export class ApiRequestError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Signed-out demo: a failed call returns null and callers fall back to built-in
+ * sample data. Signed-in: a failed call throws, so the screen shows an error
+ * instead of someone else's demo data. `emptyOn404` marks reads where "not
+ * found" simply means "nothing yet".
+ */
 async function apiFetch<T>(
   path: string,
   init?: RequestInit,
+  opts: { emptyOn404?: boolean } = {},
 ): Promise<T | null> {
   try {
     const headers: Record<string, string> = {
@@ -51,9 +68,18 @@ async function apiFetch<T>(
         ...(init?.headers as Record<string, string> | undefined),
       },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (authEnabled && !(res.status === 404 && opts.emptyOn404)) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new ApiRequestError(res.status, body.error ?? `Request failed (${res.status})`);
+      }
+      return null;
+    }
     return (await res.json()) as T;
-  } catch {
+  } catch (err) {
+    if (authEnabled) {
+      throw err instanceof ApiRequestError ? err : new ApiRequestError(0, "Can't reach the server. Check your connection and try again.");
+    }
     return null;
   }
 }
@@ -67,7 +93,6 @@ export function subscribeToHouseholdEvents(
     return () => {};
   }
 
-  const es = new EventSource(`${API_BASE}/events/stream`);
   const eventTypes = [
     "CONNECTED",
     "RECEIPT_CONFIRMED",
@@ -82,24 +107,50 @@ export function subscribeToHouseholdEvents(
     "DEMO_RESET",
   ];
 
-  const handlers = eventTypes.map((type) => {
-    const handler = (evt: MessageEvent) => {
-      try {
-        const parsed = JSON.parse(evt.data) as Record<string, unknown>;
-        onEvent(type, parsed);
-      } catch {
-        // Ignore malformed SSE frame
+  let es: EventSource | null = null;
+  let stopped = false;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+
+  const connect = async () => {
+    if (stopped) return;
+    let url = `${API_BASE}/events/stream`;
+    if (authEnabled) {
+      // EventSource cannot send headers, so the short-lived session token rides in the URL.
+      const token = (await authHeaders()).Authorization?.slice("Bearer ".length);
+      if (!token) {
+        retry = setTimeout(() => void connect(), 3000);
+        return;
       }
-    };
-    es.addEventListener(type, handler as EventListener);
-    return { type, handler };
-  });
+      url += `?token=${encodeURIComponent(token)}`;
+    }
+    if (stopped) return;
+
+    const source = new EventSource(url);
+    es = source;
+    for (const type of eventTypes) {
+      source.addEventListener(type, ((evt: MessageEvent) => {
+        try {
+          onEvent(type, JSON.parse(evt.data) as Record<string, unknown>);
+        } catch {
+          // Ignore malformed SSE frame
+        }
+      }) as EventListener);
+    }
+    if (authEnabled) {
+      // A rejected or expired token ends the stream for good, so reconnect with a fresh one.
+      source.onerror = () => {
+        source.close();
+        if (es === source) es = null;
+        if (!stopped) retry = setTimeout(() => void connect(), 3000);
+      };
+    }
+  };
+  void connect();
 
   return () => {
-    for (const h of handlers) {
-      es.removeEventListener(h.type, h.handler as EventListener);
-    }
-    es.close();
+    stopped = true;
+    clearTimeout(retry);
+    es?.close();
   };
 }
 
@@ -115,7 +166,7 @@ const store = {
 
 export async function getDashboard(): Promise<DashboardData> {
   const remote = await apiFetch<Record<string, unknown>>("/dashboard");
-  if (remote && (remote.todayMeal || remote.todayMeals)) {
+  if (remote && (authEnabled || remote.todayMeal || remote.todayMeals)) {
     const todayMeals = Array.isArray(remote.todayMeals)
       ? (remote.todayMeals as Array<Record<string, unknown>>)
       : [];
@@ -128,9 +179,9 @@ export async function getDashboard(): Promise<DashboardData> {
       ? (remote.recentActivity as Array<Record<string, unknown>>)
       : [];
 
-    const total = Number(invSummary.totalItems ?? invSummary.total ?? 10);
-    const low = Number(invSummary.lowCount ?? invSummary.low ?? 2);
-    const expiring = Number(invSummary.expiringSoonCount ?? invSummary.expiring ?? 2);
+    const total = Number(invSummary.totalItems ?? invSummary.total ?? (authEnabled ? 0 : 10));
+    const low = Number(invSummary.lowCount ?? invSummary.low ?? (authEnabled ? 0 : 2));
+    const expiring = Number(invSummary.expiringSoonCount ?? invSummary.expiring ?? (authEnabled ? 0 : 2));
 
     return {
       stateVersion: Number(remote.stateVersion || 1),
@@ -142,11 +193,10 @@ export async function getDashboard(): Promise<DashboardData> {
             shortCount: Number(firstMeal.shortageCount ?? firstMeal.shortCount ?? 0),
             status: String(firstMeal.status || "PLANNED_SHORTAGE"),
           }
-        : (remote.todayMeal as DashboardData["todayMeal"]) || {
-            recipeName: "Chicken Biryani",
-            servings: 6,
-            shortCount: 2,
-          },
+        : (remote.todayMeal as DashboardData["todayMeal"]) ||
+          (authEnabled
+            ? { recipeName: "", servings: 0, shortCount: 0 }
+            : { recipeName: "Chicken Biryani", servings: 6, shortCount: 2 }),
       inventorySummary: {
         total,
         low,
@@ -531,7 +581,7 @@ export async function transcribeVoice(
       method: "POST",
       body: JSON.stringify({
         householdId: "hh_demo_001",
-        transcriptOverride: hint || seed.voiceUtterance.transcript,
+        transcriptOverride: hint || (authEnabled ? "" : seed.voiceUtterance.transcript),
         languageCode: opts.languageCode || "ta-IN",
         autoSimulate: true,
         autoCommit: shouldCommit,
@@ -543,9 +593,9 @@ export async function transcribeVoice(
     remote?.rawTranscript ||
     remote?.transcription?.transcript ||
     hint ||
-    seed.voiceUtterance.transcript;
-  const dish = remote?.structuredIntent?.dish || "Chicken Biryani";
-  const servings = Number(remote?.structuredIntent?.servings || 6);
+    (authEnabled ? "" : seed.voiceUtterance.transcript);
+  const dish = remote?.structuredIntent?.dish || (authEnabled ? "" : "Chicken Biryani");
+  const servings = Number(remote?.structuredIntent?.servings || (authEnabled ? 0 : 6));
   const dateLabel = remote?.structuredIntent?.dateLabel || "Tomorrow";
 
   const shortages = (remote?.simulation?.ingredients || [])
@@ -602,10 +652,13 @@ export async function getRipple(eventId: string): Promise<RippleGraph> {
   const target = !eventId || eventId === "evt_meal_001" ? "latest" : eventId;
   const remote = await apiFetch<RippleGraph>(
     `/ripples/${encodeURIComponent(target)}`,
+    undefined,
+    { emptyOn404: true },
   );
   if (remote && Array.isArray(remote.nodes)) {
     return remote;
   }
+  if (authEnabled) return { eventId: target, title: "", shortageCount: 0, nodes: [], edges: [] };
   await delay(250);
   return seed.buildBiryaniRipple();
 }

@@ -4,6 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { HouseholdStore } from "@household/db";
 import { buildApiApp } from "../../apps/api/src/app.js";
+import { MemoryStateBackend } from "../../apps/api/src/state-backend.js";
 
 function app() {
   const file = path.join(os.tmpdir(), `life-api-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
@@ -199,6 +200,88 @@ describe("Clerk auth guard", () => {
     const res = await a.inject({ method: "POST", url: "/api/webhooks/snapserve", payload: {} });
     // Reaches the webhook handler (which rejects the bad signature itself) instead of the session guard.
     assert.notEqual(res.json().error, "Sign in required.");
+    await a.close();
+  });
+});
+
+describe("Per-user households", () => {
+  const verifySession = async (token: string) => {
+    if (!token.startsWith("user-")) throw new Error("bad token");
+    return { userId: token };
+  };
+  const make = (backend = new MemoryStateBackend()) => {
+    const file = path.join(os.tmpdir(), `life-users-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    return { backend, app: buildApiApp(new HouseholdStore(file), { verifySession, stateBackend: backend }) };
+  };
+  const as = (token: string) => ({ authorization: `Bearer ${token}` });
+  type App = ReturnType<typeof make>["app"];
+
+  const inventory = async (a: App, token: string) =>
+    (await a.inject({ method: "GET", url: "/api/inventory", headers: as(token) })).json().items as Array<{ name: string }>;
+
+  const scan = (a: App, token: string, name: string) =>
+    a.inject({
+      method: "POST",
+      url: "/api/receipts/confirm",
+      headers: as(token),
+      payload: { vendorName: "Test Mart", items: [{ canonicalName: name, quantity: 500, unit: "g", confirmed: true }] },
+    });
+
+  it("starts every new user with an empty household", async () => {
+    const { app: a } = make();
+    assert.equal((await inventory(a, "user-new")).length, 0);
+    const dash = (await a.inject({ method: "GET", url: "/api/dashboard", headers: as("user-new") })).json();
+    assert.equal(dash.todayMeal, null);
+    assert.equal(dash.attentionItems.length, 0);
+    assert.equal(dash.recentActivity.length, 0);
+    const overview = (await a.inject({ method: "GET", url: "/api/life/overview", headers: as("user-new") })).json();
+    assert.equal(overview.events.length, 0);
+    const notes = (await a.inject({ method: "GET", url: "/api/notifications", headers: as("user-new") })).json();
+    assert.equal(notes.unread, 0);
+    const recipes = (await a.inject({ method: "GET", url: "/api/life/recipes", headers: as("user-new") })).json().recipes;
+    assert.equal(recipes.filter((r: { canMakeNow: boolean }) => r.canMakeNow).length, 0);
+    await a.close();
+  });
+
+  it("keeps each user's data private", async () => {
+    const { app: a } = make();
+    assert.equal((await scan(a, "user-a", "Paneer")).statusCode, 200);
+    assert.ok((await inventory(a, "user-a")).some((i) => i.name === "Paneer"));
+    assert.equal((await inventory(a, "user-b")).length, 0);
+    const recent = (await a.inject({ method: "GET", url: "/api/life/receipts/recent", headers: as("user-b") })).json();
+    assert.equal(recent.receipts.length, 0);
+    await a.close();
+  });
+
+  it("saves changes so a restarted server still has them", async () => {
+    const { app: first, backend } = make();
+    await scan(first, "user-a", "Paneer");
+    await first.close();
+    const { app: second } = make(backend);
+    assert.ok((await inventory(second, "user-a")).some((i) => i.name === "Paneer"));
+    await second.close();
+  });
+
+  it("resets a user back to empty, not to the demo data", async () => {
+    const { app: a } = make();
+    await scan(a, "user-a", "Paneer");
+    await a.inject({ method: "POST", url: "/api/demo/reset", headers: as("user-a"), payload: {} });
+    assert.equal((await inventory(a, "user-a")).length, 0);
+    await a.close();
+  });
+
+  it("does not touch the shared demo data", async () => {
+    const { app: a } = make();
+    await scan(a, "user-a", "Paneer");
+    const demo = await a.inject({ method: "GET", url: "/api/inventory", headers: as("user-b") });
+    assert.equal(demo.json().items.some((i: { name: string }) => i.name === "Paneer"), false);
+    await a.close();
+  });
+
+  it("rejects a token the verifier refuses", async () => {
+    const { app: a } = make();
+    const res = await a.inject({ method: "GET", url: "/api/inventory", headers: as("nobody") });
+    assert.equal(res.statusCode, 401);
     await a.close();
   });
 });

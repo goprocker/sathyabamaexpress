@@ -99,6 +99,11 @@ export interface LifeInputs {
   forecasts: LifeForecast[];
   inventory: LifeInventoryItem[];
   cart: LifeCartItem[];
+  /**
+   * Include the built-in sample profile (EV, trip, wedding, notifications).
+   * Signed-in households turn this off so they start with nothing but their own data.
+   */
+  samples?: boolean | undefined;
 }
 
 function parseAmount(a?: string): number | undefined {
@@ -167,7 +172,7 @@ export function buildTimeline(input: LifeInputs, today = todayIso()): TimelineEv
     });
   }
 
-  for (const p of personalEvents) {
+  for (const p of input.samples === false ? [] : personalEvents) {
     events.push({
       id: p.id,
       module: p.module,
@@ -406,7 +411,7 @@ export function buildSuggestions(
     });
   }
 
-  if (vehicle.batteryPct < 60) {
+  if (input.samples !== false && vehicle.batteryPct < 60) {
     const plan = chargePlan(vehicle.batteryPct, 80);
     out.push({
       id: "sg_charge",
@@ -466,7 +471,10 @@ export function buildSuggestions(
       kind: "kitchen",
       module: "kitchen",
       title: `${shortage.itemName} runs short`,
-      why: [shortage.detail, "Cart already includes a 21-day replenishment", "Approve to keep biryani on Tuesday"],
+      why:
+        input.samples === false
+          ? [shortage.detail]
+          : [shortage.detail, "Cart already includes a 21-day replenishment", "Approve to keep biryani on Tuesday"],
       actionLabel: "Open cart",
       href: "/cart",
       score: 66,

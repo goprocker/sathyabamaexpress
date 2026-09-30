@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button, StatusPill } from "@/components/ui/primitives";
 import { useConfirmReceipt } from "@/hooks/queries";
 import { uploadReceipt, type ReceiptLineReview } from "@/lib/api";
+import { authEnabled } from "@/lib/auth";
 import { formatQuantity } from "@/lib/format";
 import type { StateTransitionItem } from "@/mocks/types";
 
@@ -18,16 +19,23 @@ export function ReceiptPage() {
   const [added, setAdded] = useState(0);
   const [transitions, setTransitions] = useState<StateTransitionItem[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const confirm = useConfirmReceipt();
 
   async function processReceiptInput(input?: { imageBase64?: string; rawText?: string }) {
     setPhase("processing");
-    const scan = await uploadReceipt(input);
-    setVendorName(scan.vendorName);
-    setLines(scan.items.map((i) => ({ ...i, included: true })));
-    setPhase("review");
+    setError(null);
+    try {
+      const scan = await uploadReceipt(input);
+      setVendorName(scan.vendorName);
+      setLines(scan.items.map((i) => ({ ...i, included: true })));
+      setPhase("review");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't read that receipt.");
+      setPhase("upload");
+    }
   }
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
@@ -39,7 +47,7 @@ export function ReceiptPage() {
       void processReceiptInput({ imageBase64: result });
     };
     reader.onerror = () => {
-      void processReceiptInput();
+      setError("Couldn't read that file. Try another photo.");
     };
     reader.readAsDataURL(file);
   }
@@ -50,10 +58,16 @@ export function ReceiptPage() {
 
   async function handleConfirm() {
     setPhase("confirming");
-    const res = await confirm.mutateAsync(lines);
-    setAdded(res.added);
-    setTransitions(res.stateTransitions ?? []);
-    setPhase("confirmed");
+    setError(null);
+    try {
+      const res = await confirm.mutateAsync(lines);
+      setAdded(res.added);
+      setTransitions(res.stateTransitions ?? []);
+      setPhase("confirmed");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save these items. Nothing was added.");
+      setPhase("review");
+    }
   }
 
   return (
@@ -66,6 +80,12 @@ export function ReceiptPage() {
             : "Upload a grocery bill to update canonical kitchen inventory."
         }
       />
+
+      {error && (
+        <p role="alert" className="rounded-card border border-danger/30 bg-danger-bg px-4 py-3 text-small text-danger">
+          {error}
+        </p>
+      )}
 
       {phase === "upload" && (
         <div className="space-y-3">
@@ -93,19 +113,21 @@ export function ReceiptPage() {
             className="hidden"
             onChange={handleFileChange}
           />
-          <div className="flex items-center justify-between rounded-card border border-border bg-surface px-4 py-3">
-            <div className="flex items-center gap-2.5 text-small text-text-secondary">
-              <FileText size={16} strokeWidth={1.75} className="text-text-tertiary" />
-              <span>Don’t have a bill photo handy?</span>
+          {!authEnabled && (
+            <div className="flex items-center justify-between rounded-card border border-border bg-surface px-4 py-3">
+              <div className="flex items-center gap-2.5 text-small text-text-secondary">
+                <FileText size={16} strokeWidth={1.75} className="text-text-tertiary" />
+                <span>Don’t have a bill photo handy?</span>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => void processReceiptInput()}
+              >
+                Load sample Nilgiris receipt
+              </Button>
             </div>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => void processReceiptInput()}
-            >
-              Load sample Nilgiris receipt
-            </Button>
-          </div>
+          )}
         </div>
       )}
 

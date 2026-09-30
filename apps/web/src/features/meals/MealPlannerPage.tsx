@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { authEnabled } from "@/lib/auth";
 import {
   CalendarDays,
   Clock,
@@ -169,19 +171,34 @@ function MealPlannerView({ sample }: { sample: KitchenSample }) {
         </div>
       </header>
 
-      {/* AI suggestion */}
-      <div className="card-base p-4 flex items-start gap-3 border-[var(--color-accent-subtle)] bg-[var(--color-accent-subtle)]/30 fade-in-up stagger-2">
-        <Sparkles size={18} className="text-[var(--color-accent)] shrink-0 mt-0.5" />
-        <div>
-          <p className="text-[13px] font-medium text-[var(--color-accent)]">
-            AI Suggestion
-          </p>
-          <p className="text-[12px] text-[var(--color-text-secondary)] mt-0.5">
-            Thursday has only 20 min cooking time. Masala Dosa (25 min) is a great quick breakfast option.
-            Your pantry has all ingredients in stock.
-          </p>
+      {/* The suggestion below is a fixed sample; signed-in households get an empty-state prompt instead. */}
+      {authEnabled ? (
+        weeklyMealPlan.length === 0 && (
+          <div className="card-base p-5 space-y-3 fade-in-up stagger-2">
+            <p className="text-[14px] font-medium">No meals planned yet</p>
+            <p className="text-[13px] text-[var(--color-text-secondary)]">
+              Say what you want to cook, or pick a recipe you can make from your inventory.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Link to="/voice" className="btn-primary">Plan by voice</Link>
+              <Link to="/recipes" className="btn-secondary">Browse recipes</Link>
+            </div>
+          </div>
+        )
+      ) : (
+        <div className="card-base p-4 flex items-start gap-3 border-[var(--color-accent-subtle)] bg-[var(--color-accent-subtle)]/30 fade-in-up stagger-2">
+          <Sparkles size={18} className="text-[var(--color-accent)] shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[13px] font-medium text-[var(--color-accent)]">
+              AI Suggestion
+            </p>
+            <p className="text-[12px] text-[var(--color-text-secondary)] mt-0.5">
+              Thursday has only 20 min cooking time. Masala Dosa (25 min) is a great quick breakfast option.
+              Your pantry has all ingredients in stock.
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Weekly progress */}
       <div className="flex gap-1 fade-in-up stagger-3">

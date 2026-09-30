@@ -88,7 +88,7 @@ function KitchenView({ sample }: { sample: KitchenSample }) {
     low: lowItems.length,
     expiring: expiringItems.length,
   };
-  const spentPct = Math.min(100, (budgetData.spent / budgetData.monthlyBudget) * 100);
+  const spentPct = budgetData.monthlyBudget > 0 ? Math.min(100, (budgetData.spent / budgetData.monthlyBudget) * 100) : 0;
 
   return (
     <div className="space-y-20">
@@ -100,7 +100,9 @@ function KitchenView({ sample }: { sample: KitchenSample }) {
         </div>
         <h1 className="hero-title max-w-[12ch]">Your kitchen, understood</h1>
         <p className="mt-6 max-w-[40ch] text-[clamp(18px,2.2vw,24px)] leading-snug tracking-[-0.02em]">
-          Your kitchen is 85% stocked. {lowItems.length} items need attention.
+          {inventoryItems.length === 0
+            ? "Your kitchen is empty. Scan a grocery bill to stock it."
+            : `${inventoryItems.length} items in stock. ${lowItems.length} need attention.`}
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link to="/receipt" className="btn-primary min-h-[52px]" style={{ borderRadius: 999 }}>

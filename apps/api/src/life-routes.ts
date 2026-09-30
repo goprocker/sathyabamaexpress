@@ -13,6 +13,7 @@ import {
   WardrobeAddInputSchema,
 } from "@household/contracts";
 import type { HouseholdStore } from "@household/db";
+import { currentUser } from "./request-context.js";
 import { consumeResources, listInventory, runForecastEngine, type ConsumeLine } from "@household/domain";
 import { answerWithHouseholdContext, transcribeAudioWithSarvam } from "@household/integrations";
 import {
@@ -65,6 +66,7 @@ function qs(request: { query: unknown }): Record<string, string | undefined> {
 export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) {
   const services = new Map<string, LifeService>();
   const seen = new Map<string, unknown>();
+  const owner = () => `${currentUser()?.userId ?? "demo"}:`;
 
   const buildInputs = (householdId: string): LifeInputs => {
     const { obligations, forecasts } = runForecastEngine(store, householdId);
@@ -111,35 +113,43 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
       };
     });
 
+    // A signed-in household starts empty: no sample cart, meal plan, trip or notices.
+    const ownData = currentUser() !== undefined;
     return {
       obligations: lifeObligations,
       forecasts: lifeForecasts,
       inventory,
-      cart: smartCart,
-      weekly: weeklyMealPlan,
+      cart: ownData ? [] : smartCart,
+      weekly: ownData ? [] : weeklyMealPlan,
+      samples: !ownData,
     };
   };
 
   const svc = (request: { query: unknown }): LifeService => {
     const householdId = qs(request).householdId ?? DEFAULT_HOUSEHOLD;
-    let s = services.get(householdId);
+    // Keyed by user as well, so one user's decisions and additions never reach another's.
+    const key = `${currentUser()?.userId ?? "demo"}:${householdId}`;
+    let s = services.get(key);
     if (!s) {
       s = new LifeService(() => buildInputs(householdId));
-      services.set(householdId, s);
+      services.set(key, s);
     }
     return s;
   };
 
   /** Call from the demo reset handler so LIVORA state resets with the rest. */
   const reset = () => {
-    services.clear();
+    const prefix = `${currentUser()?.userId ?? "demo"}:`;
+    for (const key of [...services.keys()]) if (key.startsWith(prefix)) services.delete(key);
     seen.clear();
   };
 
   // ── Kitchen sample endpoints (cart, budget, meal plan) ─────────────────
-  app.get("/api/cart", async () => ({ items: smartCart }));
-  app.get("/api/budget", async () => ({ budget: budgetData }));
-  app.get("/api/meal-plan", async () => ({ days: weeklyMealPlan }));
+  // The cart, budget and meal plan below are built-in samples. A signed-in household has none of its own yet.
+  const emptyBudget = { monthlyBudget: 0, spent: 0, remaining: 0, projectedSpend: 0, weeklyBreakdown: [] };
+  app.get("/api/cart", async () => ({ items: currentUser() ? [] : smartCart }));
+  app.get("/api/budget", async () => ({ budget: currentUser() ? emptyBudget : budgetData }));
+  app.get("/api/meal-plan", async () => ({ days: currentUser() ? [] : weeklyMealPlan }));
 
   // ── Life intelligence ─────────────────────────────────────────────────
   app.get("/api/life/overview", async (request) => svc(request).overview());
@@ -347,19 +357,19 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
 
   app.post("/api/circular/wardrobe", async (request, reply) => {
     const key = String(request.headers["idempotency-key"] ?? "");
-    if (key && seen.has(`w:${key}`)) return reply.status(200).send({ item: seen.get(`w:${key}`) });
+    if (key && seen.has(`${owner()}w:${key}`)) return reply.status(200).send({ item: seen.get(`${owner()}w:${key}`) });
     const body = WardrobeAddInputSchema.parse(request.body ?? {});
     const item = svc(request).addWardrobe(body);
-    if (key) seen.set(`w:${key}`, item);
+    if (key) seen.set(`${owner()}w:${key}`, item);
     return reply.status(201).send({ item });
   });
 
   app.post("/api/circular/listings", async (request, reply) => {
     const key = String(request.headers["idempotency-key"] ?? "");
-    if (key && seen.has(`l:${key}`)) return reply.status(200).send({ item: seen.get(`l:${key}`) });
+    if (key && seen.has(`${owner()}l:${key}`)) return reply.status(200).send({ item: seen.get(`${owner()}l:${key}`) });
     const body = ListingAddInputSchema.parse(request.body ?? {});
     const item = svc(request).addListing(body);
-    if (key) seen.set(`l:${key}`, item);
+    if (key) seen.set(`${owner()}l:${key}`, item);
     return reply.status(201).send({ item });
   });
 

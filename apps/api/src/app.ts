@@ -36,7 +36,10 @@ import {
   runReceiptExtractionWorkflow,
   runVoiceIntakeWorkflow,
 } from "@household/agents";
-import { registerClerkAuth } from "./auth.js";
+import { clerkVerifier, registerAuth, verifyRequestToken, type SessionVerifier } from "./auth.js";
+import { currentUser, runWithUser, scopedStore } from "./request-context.js";
+import { defaultStateBackend, type StateBackend } from "./state-backend.js";
+import { UserStores } from "./user-stores.js";
 import { registerLifeRoutes } from "./life-routes.js";
 import {
   isSnapserveLive,
@@ -152,18 +155,28 @@ function enrichRippleGraphWithFrontendShape(graph: RippleGraph) {
 export interface ApiAppOptions {
   /** Clerk secret key. When set, every route except the public ones needs a valid session token. */
   clerkSecretKey?: string | undefined;
+  /** Replaces Clerk's token check (tests). Also turns enforcement on. */
+  verifySession?: SessionVerifier | undefined;
+  /** Where signed-in users' households are stored. Defaults to Postgres (DATABASE_URL) or local files. */
+  stateBackend?: StateBackend | undefined;
 }
 
 export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions = {}): FastifyInstance {
-  const store = customStore || db;
+  // Signed-in users each get their own store; `store` resolves to it per request.
+  // Without a signed-in user (auth off) it is the shared demo store.
+  const store = scopedStore(customStore || db);
   const app = Fastify({
     logger: false,
   });
 
-  if (options.clerkSecretKey) registerClerkAuth(app, options.clerkSecretKey);
+  const verifySession =
+    options.verifySession ?? (options.clerkSecretKey ? clerkVerifier(options.clerkSecretKey) : undefined);
+  const userStores = verifySession ? new UserStores(options.stateBackend ?? defaultStateBackend()) : null;
+  if (verifySession && userStores) registerAuth(app, verifySession, userStores);
 
-  // Active SSE clients for live UI updates (Snapserve call progression, inventory changes, etc.)
-  const sseClients = new Set<ServerResponse>();
+  // Active SSE clients for live UI updates (Snapserve call progression, inventory changes, etc.).
+  // Each is tagged with its owner so one user never receives another's events (null = shared demo).
+  const sseClients = new Map<ServerResponse, string | null>();
 
   const broadcastRealtime = (
     eventType: string,
@@ -174,7 +187,9 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
       timestamp: new Date().toISOString(),
       ...payload,
     })}\n\n`;
-    for (const client of sseClients) {
+    const owner = currentUser()?.userId ?? null;
+    for (const [client, clientOwner] of sseClients) {
+      if (clientOwner !== owner) continue;
       try {
         client.write(message);
       } catch {
@@ -301,24 +316,36 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
       },
     ];
 
+    // The illustrative transitions are demo-only; a signed-in household with no history has none.
+    const noHistory = currentUser() ? ([] as typeof seedFallbackTransitions) : seedFallbackTransitions;
+
     const latestTransitions =
       recentEvents.find((e) => e.transitions && e.transitions.length > 0)
         ?.transitions ??
       state.auditLogs[0]?.transitions ??
-      seedFallbackTransitions;
+      noHistory;
 
     return {
       stateVersion: state.stateVersion || 1,
       latestEvent: recentEvents[0] || null,
       latestTransitions,
       recentTransitions:
-        combined.length > 0 ? combined : seedFallbackTransitions,
+        combined.length > 0 ? combined : noHistory,
       recentAudits: state.auditLogs.slice(0, 8),
       expectations: state.expectations || [],
     };
   });
 
-  app.get("/api/events/stream", (request, reply) => {
+  app.get("/api/events/stream", async (request, reply) => {
+    // EventSource cannot send headers, so signed-in mode takes the session token in the query.
+    let owner: string | null = null;
+    if (verifySession) {
+      const token = String((request.query as { token?: string }).token ?? "");
+      owner = token ? await verifyRequestToken(verifySession, token) : null;
+      if (!owner) return reply.code(401).send({ error: "Sign in required." });
+    }
+
+    reply.hijack();
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -331,7 +358,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
         timestamp: new Date().toISOString(),
       })}\n\n`
     );
-    sseClients.add(reply.raw);
+    sseClients.set(reply.raw, owner);
 
     request.raw.on("close", () => {
       sseClients.delete(reply.raw);
@@ -429,12 +456,12 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     const todayMeals = state.mealPlans.filter(
       (m) => m.householdId === householdId
     );
-    const activeMeal = todayMeals[0] || {
-      recipeName: "Chicken Biryani",
-      dishName: "Chicken Biryani",
-      servings: 6,
-      shortageCount: 2,
-    };
+    // Demo mode keeps its illustrative dinner; a signed-in household with no plan has none.
+    const activeMeal =
+      todayMeals[0] ||
+      (currentUser()
+        ? null
+        : { recipeName: "Chicken Biryani", dishName: "Chicken Biryani", servings: 6, shortageCount: 2 });
 
     const recentActivity = state.timeline
       .filter((t) => t.householdId === householdId)
@@ -455,11 +482,13 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
       greeting: "Good morning",
       todayMeals,
       // Frontend view-model compatibility property
-      todayMeal: {
-        recipeName: activeMeal.dishName,
-        servings: activeMeal.servings,
-        shortCount: activeMeal.shortageCount,
-      },
+      todayMeal: activeMeal
+        ? {
+            recipeName: activeMeal.dishName,
+            servings: activeMeal.servings,
+            shortCount: activeMeal.shortageCount,
+          }
+        : null,
       inventorySummary: {
         ...inv.summary,
         total: inv.summary.totalItems,
@@ -547,7 +576,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     };
   });
 
-  const handleReceiptExtract = async (request: any) => {
+  const handleReceiptExtract = async (request: any, reply: any) => {
     let imageBase64: string | undefined;
     let rawText: string | undefined;
     let vendorHint: string | undefined;
@@ -567,12 +596,20 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
       if (typeof b.householdId === "string") householdId = b.householdId;
     }
 
-    const { receipt, agentRun } = await runReceiptExtractionWorkflow(store, {
-      householdId,
-      imageBase64,
-      rawText,
-      vendorHint,
-    });
+    let extraction: Awaited<ReturnType<typeof runReceiptExtractionWorkflow>>;
+    try {
+      extraction = await runReceiptExtractionWorkflow(store, {
+        householdId,
+        imageBase64,
+        rawText,
+        vendorHint,
+        // Signed-in households never get invented sample lines.
+        demoFallback: !currentUser(),
+      });
+    } catch (err) {
+      return reply.code(422).send({ error: err instanceof Error ? err.message : "Couldn't read that receipt." });
+    }
+    const { receipt, agentRun } = extraction;
 
     return {
       id: receipt.id,
@@ -777,13 +814,16 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     };
   });
 
-  const handleGetRipple = async (request: any) => {
+  const handleGetRipple = async (request: any, reply: any) => {
     const params = (request.params as { eventId?: string }) || {};
     const query = (request.query as { eventId?: string }) || {};
     const eventId = params.eventId || query.eventId || "latest";
 
     let graph = getRippleGraphByEventId(store, eventId);
     if (!graph) {
+      // Demo mode plans a sample dinner so the ripple screen has something to show.
+      // A signed-in household must never get a meal it did not plan.
+      if (currentUser()) return reply.code(404).send({ error: "No ripple yet. Plan a meal to see what it changes." });
       const sim = simulateMeal(store, {
         householdId: "hh_demo_001",
         recipeId: "rcp_chicken_biryani",
@@ -1182,29 +1222,38 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
       const callStatus = String(call.status ?? "");
 
       if (externalCallId) {
-        store.mutate((draft) => {
-          const act = draft.actions.find(
-            (a) => a.externalCallId === externalCallId
-          );
-          if (!act) return;
-          if (callStatus === "completed" || callStatus === "failed") {
-            act.externalCallStatus =
-              callStatus === "completed" ? "CONFIRMED" : "FAILED";
-            act.updatedAt = new Date().toISOString();
-            act.callSteps.push({
-              status: act.externalCallStatus,
-              label:
-                callStatus === "completed"
-                  ? "SnapServe webhook: call completed"
-                  : "SnapServe webhook: call failed",
-              timestamp: new Date().toISOString(),
-            });
-          }
-        });
-        broadcastRealtime("SNAPSERVE_STATUS", {
-          actionId: externalCallId,
-          callStatus,
-        });
+        const apply = () => {
+          store.mutate((draft) => {
+            const act = draft.actions.find(
+              (a) => a.externalCallId === externalCallId
+            );
+            if (!act) return;
+            if (callStatus === "completed" || callStatus === "failed") {
+              act.externalCallStatus =
+                callStatus === "completed" ? "CONFIRMED" : "FAILED";
+              act.updatedAt = new Date().toISOString();
+              act.callSteps.push({
+                status: act.externalCallStatus,
+                label:
+                  callStatus === "completed"
+                    ? "SnapServe webhook: call completed"
+                    : "SnapServe webhook: call failed",
+                timestamp: new Date().toISOString(),
+              });
+            }
+          });
+          broadcastRealtime("SNAPSERVE_STATUS", {
+            actionId: externalCallId,
+            callStatus,
+          });
+        };
+        // The webhook carries no session, so find whose action this call belongs to.
+        const owner = userStores && !currentUser() ? await userStores.findByCall(externalCallId) : null;
+        if (owner) {
+          runWithUser(owner, apply);
+          await userStores?.flush(owner.userId);
+        }
+        else if (!userStores) apply();
       }
 
       return { received: true };

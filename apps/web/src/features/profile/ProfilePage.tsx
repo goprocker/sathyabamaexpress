@@ -69,29 +69,41 @@ function ProfileView({ budgetData }: { budgetData: { monthlyBudget: number; spen
           {displayName}
         </h1>
         <p className="text-[13px] text-[var(--color-text-secondary)] mt-1">{displayEmail}</p>
-        <div className="flex items-center justify-center gap-1.5 mt-3">
-          <Crown size={14} className="text-[#F5A623]" />
-          <span className="text-[12px] font-semibold text-[#F5A623]">Premium Plan</span>
-        </div>
+        {!account.enabled && (
+          <div className="flex items-center justify-center gap-1.5 mt-3">
+            <Crown size={14} className="text-[#F5A623]" />
+            <span className="text-[12px] font-semibold text-[#F5A623]">Premium Plan</span>
+          </div>
+        )}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 fade-in-up stagger-2">
+      {/* Stats: a signed-in household only shows what is really theirs */}
+      <div className={`grid gap-3 fade-in-up stagger-2 ${account.enabled ? "grid-cols-2" : "grid-cols-3"}`}>
         <div className="card-base p-4 text-center">
           <Package size={18} className="text-[var(--color-accent)] mx-auto mb-2" strokeWidth={1.75} />
           <p className="text-[20px] font-semibold tracking-[-0.02em]">{totalItems}</p>
           <p className="text-[11px] text-[var(--color-text-tertiary)]">Pantry Items</p>
         </div>
-        <div className="card-base p-4 text-center">
-          <TrendingUp size={18} className="text-[var(--color-success)] mx-auto mb-2" strokeWidth={1.75} />
-          <p className="text-[20px] font-semibold tracking-[-0.02em]">₹{(budgetData.monthlyBudget - budgetData.spent).toLocaleString()}</p>
-          <p className="text-[11px] text-[var(--color-text-tertiary)]">Saved/Month</p>
-        </div>
-        <div className="card-base p-4 text-center">
-          <ChefHat size={18} className="text-[var(--color-warning)] mx-auto mb-2" strokeWidth={1.75} />
-          <p className="text-[20px] font-semibold tracking-[-0.02em]">18</p>
-          <p className="text-[11px] text-[var(--color-text-tertiary)]">Meals Cooked</p>
-        </div>
+        {account.enabled ? (
+          <div className="card-base p-4 text-center">
+            <User size={18} className="text-[var(--color-success)] mx-auto mb-2" strokeWidth={1.75} />
+            <p className="text-[20px] font-semibold tracking-[-0.02em]">{familyMembers.length}</p>
+            <p className="text-[11px] text-[var(--color-text-tertiary)]">Household members</p>
+          </div>
+        ) : (
+          <>
+            <div className="card-base p-4 text-center">
+              <TrendingUp size={18} className="text-[var(--color-success)] mx-auto mb-2" strokeWidth={1.75} />
+              <p className="text-[20px] font-semibold tracking-[-0.02em]">₹{(budgetData.monthlyBudget - budgetData.spent).toLocaleString()}</p>
+              <p className="text-[11px] text-[var(--color-text-tertiary)]">Saved/Month</p>
+            </div>
+            <div className="card-base p-4 text-center">
+              <ChefHat size={18} className="text-[var(--color-warning)] mx-auto mb-2" strokeWidth={1.75} />
+              <p className="text-[20px] font-semibold tracking-[-0.02em]">18</p>
+              <p className="text-[11px] text-[var(--color-text-tertiary)]">Meals Cooked</p>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Family */}
@@ -132,30 +144,32 @@ function ProfileView({ budgetData }: { budgetData: { monthlyBudget: number; spen
       {/* Settings */}
       <div className="card-base overflow-hidden fade-in-up stagger-4">
         <SettingRow icon={Bell} label="Notifications" detail="Push, email, SMS" />
-        <SettingRow icon={Mic} label="Voice Settings" detail="Tamil (ta-IN)" />
-        <SettingRow icon={Smartphone} label="Grocery Platforms" detail="Zepto, Blinkit connected" />
+        <SettingRow icon={Mic} label="Voice Settings" detail={account.enabled ? "Tamil and English" : "Tamil (ta-IN)"} />
+        <SettingRow icon={Smartphone} label="Grocery Platforms" detail={account.enabled ? "None connected" : "Zepto, Blinkit connected"} />
         <SettingRow icon={Shield} label="Privacy & Data" detail="Manage your data" />
       </div>
 
-      {/* Subscription */}
-      <div className="card-base p-5 space-y-3 fade-in-up stagger-5">
-        <div className="flex items-center gap-2">
-          <Crown size={16} className="text-[#F5A623]" />
-          <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Premium Plan</h2>
-        </div>
-        <p className="text-[12px] text-[var(--color-text-secondary)]">
-          Advanced AI scanning, personalized meal planning, consumption predictions, budget analytics, and family sharing.
-        </p>
-        <div className="flex items-center justify-between rounded-[8px] bg-[var(--color-surface-subtle)] px-4 py-3">
-          <div>
-            <p className="text-[14px] font-semibold text-[var(--color-text-primary)]">₹199/month</p>
-            <p className="text-[11px] text-[var(--color-text-tertiary)]">Renews Oct 15, 2026</p>
+      {/* Subscription: sample billing for the demo only */}
+      {!account.enabled && (
+        <div className="card-base p-5 space-y-3 fade-in-up stagger-5">
+          <div className="flex items-center gap-2">
+            <Crown size={16} className="text-[#F5A623]" />
+            <h2 className="text-[15px] font-semibold tracking-[-0.01em]">Premium Plan</h2>
           </div>
-          <button className="text-[12px] font-medium text-[var(--color-accent)]">
-            Manage
-          </button>
+          <p className="text-[12px] text-[var(--color-text-secondary)]">
+            Advanced AI scanning, personalized meal planning, consumption predictions, budget analytics, and family sharing.
+          </p>
+          <div className="flex items-center justify-between rounded-[8px] bg-[var(--color-surface-subtle)] px-4 py-3">
+            <div>
+              <p className="text-[14px] font-semibold text-[var(--color-text-primary)]">₹199/month</p>
+              <p className="text-[11px] text-[var(--color-text-tertiary)]">Renews Oct 15, 2026</p>
+            </div>
+            <button className="text-[12px] font-medium text-[var(--color-accent)]">
+              Manage
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Sign out */}
       {account.enabled && (

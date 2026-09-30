@@ -337,6 +337,7 @@ export async function runReceiptExtractionWorkflow(
     imageBase64?: string;
     rawText?: string;
     vendorHint?: string;
+    demoFallback?: boolean;
   } = {}
 ): Promise<{
   receipt: ReceiptUpload;

@@ -1069,6 +1069,38 @@ export function createCanonicalSeedState(
   return buildCanonicalSeedState("pre-receipt");
 }
 
+/**
+ * What a first-time signed-in user starts with: an empty household. No stock,
+ * receipts, bills, meals, forecasts or history. Only reference data that the
+ * engines need to function (the vendor directory and the canonical recipes)
+ * is carried over from the demo seed.
+ */
+export function buildFreshUserState(): CanonicalStateData {
+  const seed = buildCanonicalSeedState("pre-receipt");
+  const householdId = "hh_demo_001";
+  return {
+    ...emptyCanonicalState(),
+    households: [
+      {
+        id: householdId,
+        name: "My household",
+        timezone: "Asia/Kolkata",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    members: [{ id: "usr_owner", householdId, name: "You", role: "OWNER" }],
+    vendors: seed.vendors,
+    recipes: seed.recipes,
+  };
+}
+
+export interface StoreOptions {
+  /** Builds the state a brand-new store starts from and resets to. Defaults to the demo seed. */
+  seed?: () => CanonicalStateData;
+  /** Called with the full state after every change, for external persistence (e.g. Postgres). */
+  onPersist?: (state: CanonicalStateData) => void;
+}
+
 export interface AuditInfo {
   householdId: string;
   actor: string;
@@ -1080,13 +1112,15 @@ export interface AuditInfo {
 export class HouseholdStore {
   private state: CanonicalStateData;
   private readonly persistFilePath: string | null;
+  private readonly seedFactory: (() => CanonicalStateData) | null;
+  private readonly onPersist: ((state: CanonicalStateData) => void) | null;
 
-  constructor(persistFilePath?: string | null, initialState?: CanonicalStateData) {
+  constructor(persistFilePath?: string | null, initialState?: CanonicalStateData, options: StoreOptions = {}) {
+    this.seedFactory = options.seed ?? null;
+    this.onPersist = options.onPersist ?? null;
     if (persistFilePath === null) {
       this.persistFilePath = null;
-      this.state = initialState
-        ? structuredClone(initialState)
-        : buildCanonicalSeedState("pre-receipt");
+      this.state = initialState ? structuredClone(initialState) : this.newSeedState();
       return;
     }
 
@@ -1097,6 +1131,10 @@ export class HouseholdStore {
     this.state = initialState
       ? structuredClone(initialState)
       : this.loadOrInitialize();
+  }
+
+  private newSeedState(mode: "pre-receipt" | "post-receipt" = "pre-receipt"): CanonicalStateData {
+    return this.seedFactory ? this.seedFactory() : buildCanonicalSeedState(mode);
   }
 
   private loadOrInitialize(): CanonicalStateData {
@@ -1119,12 +1157,13 @@ export class HouseholdStore {
         // Fall through to canonical seed
       }
     }
-    const seed = buildCanonicalSeedState("pre-receipt");
+    const seed = this.newSeedState();
     this.saveToDisk(seed);
     return seed;
   }
 
   private saveToDisk(data: CanonicalStateData): void {
+    this.onPersist?.(data);
     if (!this.persistFilePath) return;
     try {
       const dir = path.dirname(this.persistFilePath);
@@ -1198,7 +1237,7 @@ export class HouseholdStore {
   public resetToCanonicalSeed(
     mode: "pre-receipt" | "post-receipt" = "pre-receipt"
   ): CanonicalStateData {
-    const fresh = buildCanonicalSeedState(mode);
+    const fresh = this.newSeedState(mode);
     this.state = fresh;
     this.saveToDisk(fresh);
     return fresh;

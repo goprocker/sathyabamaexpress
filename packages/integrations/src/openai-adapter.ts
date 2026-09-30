@@ -51,6 +51,11 @@ export async function extractReceiptWithVision(options: {
   imageBase64?: string;
   rawText?: string;
   vendorHint?: string;
+  /**
+   * When the scan cannot be read, fall back to the built-in sample receipt (demo mode).
+   * Turn off for real households, where invented lines would pollute their inventory.
+   */
+  demoFallback?: boolean;
 } = {}): Promise<{
   vendorName: string;
   items: RawExtractedReceiptLine[];
@@ -125,8 +130,16 @@ export async function extractReceiptWithVision(options: {
         }
       }
     } catch {
-      // Fall through to deterministic receipt parser when offline or without key
+      // Fall through to the sample receipt in demo mode; real households get an error below.
     }
+  }
+
+  if (options.demoFallback === false) {
+    throw new Error(
+      apiKey
+        ? "Couldn't read that receipt. Try a clearer photo of the whole bill."
+        : "Receipt scanning needs an OpenAI key on the server.",
+    );
   }
 
   return {

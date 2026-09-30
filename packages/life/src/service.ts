@@ -223,7 +223,8 @@ export class LifeService {
     const billsDue7 = events
       .filter((e) => e.amount && (e.kind === "bill" || e.kind === "vehicle") && daysBetween(today, e.date) <= 7)
       .reduce((sum, e) => sum + (e.amount ?? 0), 0);
-    const commuteWeek = weekCommuteCost();
+    const sample = inputs.samples !== false;
+    const commuteWeek = sample ? weekCommuteCost() : 0;
     return {
       today,
       spendNext7Days: {
@@ -256,17 +257,23 @@ export class LifeService {
         .filter((r) => r.canMakeNow)
         .map((r) => r.name)
         .slice(0, 20),
-      summary: this.summary(),
-      mobility: (({ commute: c, vehicle: v, routes, week, weekTotal, savings, stations: st }) => ({
-        commute: c,
-        vehicle: v,
-        routes,
-        week,
-        weekTotal,
-        savings,
-        nearestStations: st.slice(0, 3),
-      }))(this.mobility()),
-      wardrobe: this.closet().map((w) => ({ name: w.name, occasions: w.occasions, worn: w.worn })),
+      // The mobility and wardrobe profiles are built-in samples; a household that
+      // starts empty must not have the assistant quote them as its own.
+      ...(sample
+        ? {
+            summary: this.summary(),
+            mobility: (({ commute: c, vehicle: v, routes, week, weekTotal, savings, stations: st }) => ({
+              commute: c,
+              vehicle: v,
+              routes,
+              week,
+              weekTotal,
+              savings,
+              nearestStations: st.slice(0, 3),
+            }))(this.mobility()),
+            wardrobe: this.closet().map((w) => ({ name: w.name, occasions: w.occasions, worn: w.worn })),
+          }
+        : {}),
     };
   }
 
@@ -306,16 +313,21 @@ export class LifeService {
       hits.push({ id: `ls:${l.id}`, label: l.title, hint: `${l.type} · ${l.km} km`, group: "Sharing", module: "circular", to: "/circular" });
     for (const s of stations)
       hits.push({ id: `cs:${s.id}`, label: s.name, hint: `EV charging · ${s.km} km`, group: "EV charging", module: "mobility", to: "/mobility" });
-    for (const n of notices)
+    for (const n of this.activeNotices())
       hits.push({ id: `nt:${n.id}`, label: n.title, hint: n.detail, group: "Notifications", module: n.module, to: n.href });
     return hits.filter((h) => `${h.label} ${h.hint}`.toLowerCase().includes(term)).slice(0, 24);
   }
 
   // ── Notifications ───────────────────────────────────────────────────────
 
+  /** The built-in sample notices, or none for a household that starts empty. */
+  private activeNotices(): typeof notices {
+    return this.getInputs().samples === false ? [] : notices;
+  }
+
   notifications() {
     const map = new Map<string, typeof notices>();
-    for (const n of notices) map.set(n.group, [...(map.get(n.group) ?? []), n]);
+    for (const n of this.activeNotices()) map.set(n.group, [...(map.get(n.group) ?? []), n]);
     const groups = [...map.entries()]
       .map(([title, items]) => ({
         title,
@@ -328,7 +340,7 @@ export class LifeService {
   }
 
   markRead(ids: string[] | "all") {
-    const target = ids === "all" ? notices.map((n) => n.id) : ids;
+    const target = ids === "all" ? this.activeNotices().map((n) => n.id) : ids;
     this.state.read = [...new Set([...this.state.read, ...target])];
   }
 

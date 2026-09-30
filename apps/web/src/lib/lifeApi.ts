@@ -13,7 +13,7 @@ import {
 } from "@household/life";
 import * as seed from "@/mocks/data";
 import { API_BASE } from "./api";
-import { authHeaders } from "./auth";
+import { authEnabled, authHeaders } from "./auth";
 
 export type Overview = ReturnType<LifeService["overview"]>;
 export type Summary = ReturnType<LifeService["summary"]>;
@@ -106,8 +106,16 @@ function persist() {
   }
 }
 
+/** Signed in, the built-in offline sample data must never stand in for the user's own data. */
+function unreachable(): never {
+  throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
+}
+
 async function read<T>(path: string, fallback: (s: LifeService) => T): Promise<T> {
-  return (await request<T>(path)) ?? fallback(offline());
+  const remote = await request<T>(path);
+  if (remote !== undefined) return remote;
+  if (authEnabled) unreachable();
+  return fallback(offline());
 }
 
 async function write<T>(
@@ -123,6 +131,7 @@ async function write<T>(
     ...(headers ? { headers } : {}),
   });
   if (remote !== undefined) return remote;
+  if (authEnabled) unreachable();
   const out = fallback(offline());
   persist();
   return out;

@@ -95,6 +95,7 @@ One `.env` at the repository root serves both apps. Never commit it (it is gitig
 | `VITE_CLERK_PUBLISHABLE_KEY` | web | Turns on the login gate. Safe for the browser. |
 | `CLERK_SECRET_KEY` | api | Makes the API require a valid session on every route except health. Server only. |
 | `CLERK_AUTHORIZED_PARTIES` | api | Optional, comma-separated web origins allowed to mint tokens. |
+| `DATABASE_URL` | api | Postgres connection string. Stores each user's household in a `livora_user_state` table (created automatically). **Required on Vercel**, where local files do not survive. Without it, users are saved as files in `apps/api/.data/users/`. |
 | `OPENAI_API_KEY` | api | Contextual assistant, receipt vision, meal intent. |
 | `OPENAI_MODEL`, `OPENAI_VISION_MODEL` | api | Model names (defaults `gpt-4o-mini` and `gpt-4o`). |
 | `SARVAM_API_KEY`, `SARVAM_STT_MODEL` | api | Speech-to-text for Tamil, Tanglish and English. |
@@ -109,9 +110,17 @@ One `.env` at the repository root serves both apps. Never commit it (it is gitig
 2. Put the publishable key in `VITE_CLERK_PUBLISHABLE_KEY` and the secret key in `CLERK_SECRET_KEY`.
 3. Restart. Every product screen now needs a sign-in, and the API returns `401` without a valid session token.
 
-Left open on purpose: `/landing`, `/api/health`, `/api/ready`, the Snapserve webhook (it verifies its own HMAC signature) and the live event stream (browsers cannot send an auth header on it, and it carries event ids only).
+Left open on purpose: `/landing`, `/api/health`, `/api/ready`, and the Snapserve webhook (it verifies its own HMAC signature). The live event stream (`/api/events/stream`) checks a session token passed as `?token=`, because browsers cannot send an auth header on it.
 
-Login proves who you are; it does not yet split data per user. Everyone who signs in sees the same demo household.
+### Your data (per user)
+
+Every signed-in user gets their own household, and it starts **empty**: no stock, receipts, bills, meals, forecasts, notifications or history. Scan a bill or plan a meal and it fills up. Users never see each other's data, and live events go only to the account that caused them.
+
+- **Where it is stored:** one JSON document per user, in Postgres when `DATABASE_URL` is set, otherwise as a file under `apps/api/.data/users/`.
+- **Reset:** "Reset demo" on a signed-in account clears it back to empty, not to demo data.
+- **Signed-in accounts never see sample data as their own.** A failed request shows an error instead of falling back to demo content, and a receipt that cannot be read is rejected instead of inventing items.
+- **Still sample content:** the Mobility and Circular screens (commute, EV, wardrobe, sharing) and the vendor directory are built-in and shared, because they have no per-user data model yet. Recipes are reference content, not user data.
+- **Without Clerk keys** the app runs as one shared demo household with sample data.
 
 ## Commands
 
@@ -147,11 +156,11 @@ All routes live under `/api`.
 
 ## Testing
 
-`pnpm test` runs the whole suite against isolated temporary stores, so it never touches your local demo data and never needs Clerk keys. It covers the deterministic engines, the recipe and inventory flow (including bill to recipe unlock, refusal when short, and idempotent cooking), and the auth guard.
+`pnpm test` runs the whole suite against isolated temporary stores, so it never touches your local demo data and never needs Clerk keys or a database. It covers the deterministic engines, the recipe and inventory flow (bill to recipe unlock, refusal when short, idempotent cooking), the auth guard, and per-user isolation (fresh start, privacy between users, persistence across restarts, reset).
 
 ## Deployment
 
-`vercel.json` builds the web app as a static site and serves the API through `apps/api/src/vercel-entry.ts`. Set the same environment variables in the Vercel project. Use a live Clerk instance and rotate any development keys before shipping.
+`vercel.json` builds the web app as a static site and serves the API through `apps/api/src/vercel-entry.ts`. Set the same environment variables in the Vercel project, including `DATABASE_URL` (serverless functions have no durable disk, so per-user data needs Postgres). Use a live Clerk instance and rotate any development keys before shipping.
 
 ## Design
 
