@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useSearch } from "@tanstack/react-router";
-import { ImagePlus, Mic, SendHorizontal, Sparkles, X } from "lucide-react";
+import { Check, ImagePlus, Mic, SendHorizontal, ShoppingCart, Sparkles, Undo2, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { useAsk, useAskByVoice, useStarters } from "@/hooks/life";
+import { useAddCartItem, useAsk, useAskByVoice, useRemoveCartItem, useSetCartQuantity, useStarters } from "@/hooks/life";
+import type { AssistantAction } from "@household/contracts";
 import type { Answer } from "@/lib/lifeApi";
 
 interface Turn {
@@ -252,7 +253,8 @@ export function AssistantPage() {
                     ))}
                   </ul>
                 )}
-                {t.a.sources.length > 0 && (
+                {t.a.actions && t.a.actions.length > 0 && <ActionReceipts actions={t.a.actions} />}
+                {t.a.sources.length > 0 && !t.a.actions?.length && (
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     <span className="mono-label">Based on</span>
                     {t.a.sources.map((s) => (
@@ -341,5 +343,76 @@ export function AssistantPage() {
         </p>
       </form>
     </div>
+  );
+}
+
+/** What the assistant changed, with a way back. Undo restores the quantity from before the action. */
+function ActionReceipts({ actions }: { actions: AssistantAction[] }) {
+  const done = actions.filter((a) => a.status === "done");
+  if (done.length === 0) return null;
+  return (
+    <ul className="mt-4 space-y-2" aria-label="Changes made">
+      {done.map((a, i) => (
+        <ActionReceipt key={`${a.itemId ?? a.name}-${i}`} action={a} />
+      ))}
+    </ul>
+  );
+}
+
+function ActionReceipt({ action }: { action: AssistantAction }) {
+  const add = useAddCartItem();
+  const setQuantity = useSetCartQuantity();
+  const remove = useRemoveCartItem();
+  const [state, setState] = useState<"done" | "undoing" | "undone" | "failed">("done");
+
+  const undo = async () => {
+    setState("undoing");
+    try {
+      if (action.type === "cart_remove") {
+        await add.mutateAsync({ name: action.name, quantity: action.previousQuantity ?? 1, ...(action.unit ? { unit: action.unit } : {}) });
+      } else if (action.itemId && action.previousQuantity) {
+        await setQuantity.mutateAsync({ id: action.itemId, quantity: action.previousQuantity });
+      } else if (action.itemId) {
+        await remove.mutateAsync(action.itemId);
+      }
+      setState("undone");
+    } catch {
+      setState("failed");
+    }
+  };
+
+  const label =
+    action.type === "cart_remove"
+      ? `${action.name} removed`
+      : `${action.name} · ${action.quantity ?? ""} ${action.unit ?? ""}`.trim();
+
+  return (
+    <li className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2 rounded-[16px] bg-surface-elevated px-4 py-2">
+      <span className="flex min-w-[8rem] flex-1 items-center gap-2 text-[15px]">
+        <Check size={16} strokeWidth={1.75} className="shrink-0 text-accent" aria-hidden />
+        <span className={state === "undone" ? "truncate text-text-tertiary line-through" : "truncate"}>{label}</span>
+      </span>
+      {state === "undone" ? (
+        <span className="text-[13px] text-text-tertiary" role="status">
+          Undone
+        </span>
+      ) : (
+        <span className="ml-auto flex items-center gap-1">
+          <Link to="/cart" className="flex min-h-11 items-center gap-1.5 rounded-full px-3 text-[13px] hover:bg-accent-subtle">
+            <ShoppingCart size={15} strokeWidth={1.6} aria-hidden />
+            View cart
+          </Link>
+          <button
+            type="button"
+            onClick={undo}
+            disabled={state === "undoing"}
+            className="flex min-h-11 items-center gap-1.5 rounded-full px-3 text-[13px] hover:bg-accent-subtle disabled:opacity-50"
+          >
+            <Undo2 size={15} strokeWidth={1.6} aria-hidden />
+            {state === "undoing" ? "Undoing…" : state === "failed" ? "Retry undo" : "Undo"}
+          </button>
+        </span>
+      )}
+    </li>
   );
 }

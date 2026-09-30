@@ -284,6 +284,45 @@ describe("Per-user households", () => {
     assert.equal(res.statusCode, 401);
     await a.close();
   });
+
+  it("adds to the cart through the assistant, once per idempotency key, and undoes", async () => {
+    const previous = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "";
+    const a = app();
+    const ask = () =>
+      a.inject({
+        method: "POST",
+        url: "/api/life/assistant",
+        headers: { "idempotency-key": "ask-bread-1" },
+        payload: { question: "add cart bread" },
+      });
+    const first = (await ask()).json();
+    assert.equal(first.answer.actions[0].type, "cart_add");
+    assert.equal(first.answer.actions[0].status, "done");
+    assert.match(first.answer.text, /Added Bread/);
+    await ask();
+    const cart = (await a.inject({ method: "GET", url: "/api/cart" })).json();
+    const bread = cart.items.filter((c: { name: string }) => c.name === "Bread");
+    assert.equal(bread.length, 1);
+    assert.equal(bread[0].quantity, 1);
+    assert.equal(bread[0].priceUnknown, true);
+
+    const del = await a.inject({ method: "DELETE", url: `/api/cart/items/${bread[0].id}` });
+    assert.equal(del.statusCode, 200);
+    const after = (await a.inject({ method: "GET", url: "/api/cart" })).json();
+    assert.equal(after.items.some((c: { name: string }) => c.name === "Bread"), false);
+    await a.close();
+    process.env.OPENAI_API_KEY = previous;
+  });
+
+  it("validates cart updates", async () => {
+    const a = app();
+    const bad = await a.inject({ method: "POST", url: "/api/cart/items", payload: { name: "" } });
+    assert.equal(bad.statusCode, 400);
+    const missing = await a.inject({ method: "PATCH", url: "/api/cart/items/nope", payload: { quantity: 2 } });
+    assert.equal(missing.statusCode, 404);
+    await a.close();
+  });
 });
 
 describe("Signed-in server behaviour", () => {

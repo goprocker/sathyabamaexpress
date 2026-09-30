@@ -1010,6 +1010,51 @@ export const AssistantAskInputSchema = z.object({
 });
 export type AssistantAskInput = z.infer<typeof AssistantAskInputSchema>;
 
+// ── Cart ────────────────────────────────────────────────────────────────────
+
+export const CartItemSchema = z.object({
+  id: z.string(),
+  itemId: z.string(),
+  name: z.string(),
+  quantity: z.number().positive(),
+  unit: z.string(),
+  /** Line total in ₹ for this quantity. 0 with priceUnknown when no price is on record. */
+  estimatedPrice: z.number().nonnegative(),
+  priceUnknown: z.boolean().optional(),
+  source: z.enum(["auto", "manual", "recipe", "assistant"]),
+  reason: z.string().optional(),
+  platform: z.enum(["zepto", "blinkit", "manual"]).optional(),
+  addedAt: z.string().optional(),
+});
+export type CartItem = z.infer<typeof CartItemSchema>;
+
+export const CartAddInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  quantity: z.number().positive().max(1000).default(1),
+  unit: z.string().trim().min(1).max(20).default("pc"),
+  source: z.enum(["manual", "assistant"]).default("manual"),
+});
+export type CartAddInput = z.infer<typeof CartAddInputSchema>;
+
+export const CartUpdateInputSchema = z.object({
+  quantity: z.number().min(0).max(1000),
+});
+export type CartUpdateInput = z.infer<typeof CartUpdateInputSchema>;
+
+/** A state change the assistant carried out on the user's behalf. */
+export const AssistantActionSchema = z.object({
+  type: z.enum(["cart_add", "cart_remove"]),
+  status: z.enum(["done", "skipped"]),
+  itemId: z.string().optional(),
+  name: z.string(),
+  quantity: z.number().optional(),
+  unit: z.string().optional(),
+  /** Quantity before this action (0 = the item was not in the cart); used for undo. */
+  previousQuantity: z.number().optional(),
+  note: z.string().optional(),
+});
+export type AssistantAction = z.infer<typeof AssistantActionSchema>;
+
 export const FlagInputSchema = z.object({ enabled: z.boolean() });
 export type FlagInput = z.infer<typeof FlagInputSchema>;
 

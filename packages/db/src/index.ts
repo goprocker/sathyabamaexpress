@@ -6,6 +6,7 @@ import type {
   ActionProposal,
   AgentRunTrace,
   BaseUnit,
+  CartItem,
   DisplayUnit,
   ExpectationRecord,
   Forecast,
@@ -93,6 +94,8 @@ export interface CanonicalStateData {
   auditLogs: AuditRecord[];
   approvalTokens: Record<string, ApprovalTokenRecord>;
   idempotencyCache: Record<string, { createdAt: string; result: unknown }>;
+  /** The household's shopping cart. Absent in state saved before the cart existed. */
+  cart?: CartItem[];
 }
 
 export function emptyCanonicalState(): CanonicalStateData {

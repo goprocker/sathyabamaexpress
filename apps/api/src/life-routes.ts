@@ -2,10 +2,14 @@
 // living, household sharing scopes, plans and the kitchen sample endpoints.
 // Logic lives in @household/life; this file only adapts the canonical store to
 // the engine's inputs and validates requests with the shared contracts.
+import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import {
   AssistantAskInputSchema,
+  CartAddInputSchema,
+  CartUpdateInputSchema,
   FlagInputSchema,
+  type AssistantAction,
   ImpactFactorsInputSchema,
   LifeDecisionInputSchema,
   ListingAddInputSchema,
@@ -15,9 +19,14 @@ import {
 import type { HouseholdStore } from "@household/db";
 import { currentUser } from "./request-context.js";
 import { consumeResources, listInventory, runForecastEngine, type ConsumeLine } from "@household/domain";
-import { answerWithHouseholdContext, transcribeAudioWithSarvam } from "@household/integrations";
+import { answerWithHouseholdContext, transcribeAudioWithSarvam, type RequestedCartAction } from "@household/integrations";
 import {
+  addToCart,
   budgetData,
+  cartTotals,
+  findCartItem,
+  parseCartCommand,
+  setCartQuantity,
   daysBetween,
   findCatalogRecipe,
   ingredientBase,
@@ -27,6 +36,8 @@ import {
   smartCart,
   todayIso,
   weeklyMealPlan,
+  type CartChange,
+  type LifeCartItem,
   type LifeForecast,
   type LifeInputs,
   type LifeInventoryItem,
@@ -67,6 +78,73 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
   const services = new Map<string, LifeService>();
   const seen = new Map<string, unknown>();
   const owner = () => `${currentUser()?.userId ?? "demo"}:`;
+
+  // ── Cart (canonical state) ───────────────────────────────────────────
+  // A signed-in household starts with an empty cart; the open demo starts from the sample.
+  const initialCart = (): LifeCartItem[] => (currentUser() ? [] : smartCart.map((c) => ({ ...c })));
+  const readCart = (): LifeCartItem[] => store.getState().cart ?? initialCart();
+
+  const changeCart = (
+    operation: string,
+    change: (cart: LifeCartItem[]) => CartChange,
+  ): CartChange =>
+    store.mutate(
+      (draft) => {
+        const out = change(draft.cart ?? initialCart());
+        draft.cart = out.cart;
+        return out;
+      },
+      {
+        householdId: DEFAULT_HOUSEHOLD,
+        actor: currentUser()?.userId ?? "demo",
+        operation,
+        entityType: "cart_item",
+        entityId: "cart",
+      },
+    );
+
+  const newCartId = () => `cart_${crypto.randomUUID().slice(0, 8)}`;
+
+  /** Applies cart actions requested through the assistant. Deterministic; the model only named them. */
+  const applyCartActions = (requested: RequestedCartAction[]): AssistantAction[] =>
+    requested.map((a): AssistantAction => {
+      if (a.type === "cart_add") {
+        const out = changeCart("CART_ADD", (cart) =>
+          addToCart(cart, { name: a.name, quantity: a.quantity, unit: a.unit, source: "assistant" }, { id: newCartId(), now: new Date().toISOString() }),
+        );
+        return {
+          type: "cart_add",
+          status: "done",
+          itemId: out.item?.id,
+          name: out.item?.name ?? a.name,
+          quantity: out.item?.quantity,
+          unit: out.item?.unit,
+          previousQuantity: out.previousQuantity,
+        };
+      }
+      const existing = findCartItem(readCart(), a.name);
+      if (!existing) return { type: "cart_remove", status: "skipped", name: a.name, note: "Not in your cart." };
+      const out = changeCart("CART_REMOVE", (cart) => setCartQuantity(cart, existing.id, 0));
+      return {
+        type: "cart_remove",
+        status: "done",
+        itemId: existing.id,
+        name: existing.name,
+        quantity: 0,
+        unit: existing.unit,
+        previousQuantity: out.previousQuantity,
+      };
+    });
+
+  const describeActions = (actions: AssistantAction[]): { text: string; bullets: string[] } => {
+    const lines = actions.map((a) => {
+      if (a.type === "cart_remove") return a.status === "done" ? `Removed ${a.name} from your cart.` : `${a.name} isn't in your cart.`;
+      return a.previousQuantity
+        ? `${a.name} is now ${a.quantity} ${a.unit} in your cart (was ${a.previousQuantity}).`
+        : `Added ${a.name} (${a.quantity} ${a.unit}) to your cart.`;
+    });
+    return lines.length === 1 ? { text: lines[0] ?? "", bullets: [] } : { text: "Updated your cart.", bullets: lines };
+  };
 
   const buildInputs = (householdId: string): LifeInputs => {
     const { obligations, forecasts } = runForecastEngine(store, householdId);
@@ -119,7 +197,7 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
       obligations: lifeObligations,
       forecasts: lifeForecasts,
       inventory,
-      cart: ownData ? [] : smartCart,
+      cart: readCart(),
       weekly: ownData ? [] : weeklyMealPlan,
       samples: !ownData,
     };
@@ -147,7 +225,39 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
   // ── Kitchen sample endpoints (cart, budget, meal plan) ─────────────────
   // The cart, budget and meal plan below are built-in samples. A signed-in household has none of its own yet.
   const emptyBudget = { monthlyBudget: 0, spent: 0, remaining: 0, projectedSpend: 0, weeklyBreakdown: [] };
-  app.get("/api/cart", async () => ({ items: currentUser() ? [] : smartCart }));
+  app.get("/api/cart", async () => {
+    const items = readCart();
+    return { items, totals: cartTotals(items) };
+  });
+
+  app.post("/api/cart/items", async (request, reply) => {
+    const key = String(request.headers["idempotency-key"] ?? "");
+    const cacheKey = key ? `cart_add:${key}` : undefined;
+    const cached = store.getIdempotentResult<{ item: LifeCartItem | null }>(cacheKey);
+    if (cached) return reply.status(200).send(cached);
+    const body = CartAddInputSchema.parse(request.body ?? {});
+    const out = changeCart("CART_ADD", (cart) =>
+      addToCart(cart, { name: body.name, quantity: body.quantity, unit: body.unit, source: body.source }, { id: newCartId(), now: new Date().toISOString() }),
+    );
+    const result = { item: out.item, previousQuantity: out.previousQuantity };
+    store.setIdempotentResult(cacheKey, result);
+    return reply.status(201).send(result);
+  });
+
+  app.patch("/api/cart/items/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = CartUpdateInputSchema.parse(request.body ?? {});
+    if (!readCart().some((c) => c.id === id)) return reply.code(404).send({ error: "Cart item not found." });
+    const out = changeCart("CART_UPDATE", (cart) => setCartQuantity(cart, id, body.quantity));
+    return { item: out.item, previousQuantity: out.previousQuantity };
+  });
+
+  app.delete("/api/cart/items/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!readCart().some((c) => c.id === id)) return reply.code(404).send({ error: "Cart item not found." });
+    changeCart("CART_REMOVE", (cart) => setCartQuantity(cart, id, 0));
+    return { ok: true };
+  });
   app.get("/api/budget", async () => ({ budget: currentUser() ? emptyBudget : budgetData }));
   app.get("/api/meal-plan", async () => ({ days: currentUser() ? [] : weeklyMealPlan }));
 
@@ -196,25 +306,43 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
     history?: Array<{ q: string; a: string }>,
     imageDataUrl?: string,
   ) => {
+    const cartSource = MODULE_SOURCES.cart ? [MODULE_SOURCES.cart] : [];
     if (process.env.OPENAI_API_KEY?.trim()) {
       try {
         const out = await answerWithHouseholdContext({ question, context: service.assistantContext(), history, imageDataUrl });
+        if (out.actions.length > 0) {
+          const actions = applyCartActions(out.actions);
+          return { ...describeActions(actions), sources: cartSource, actions, provider: "openai" as const };
+        }
         return {
           text: out.text,
           bullets: out.bullets,
           sources: out.modules.flatMap((m) => MODULE_SOURCES[m] ?? []),
+          actions: [] as AssistantAction[],
           provider: "openai" as const,
         };
       } catch (err) {
         app.log.warn({ err }, "assistant: OpenAI failed, using rule-based fallback");
       }
     }
-    return { ...service.ask(question), provider: "rule-based" as const };
+    const command = parseCartCommand(question);
+    if (command) {
+      const actions = applyCartActions([command]);
+      return { ...describeActions(actions), sources: cartSource, actions, provider: "rule-based" as const };
+    }
+    return { ...service.ask(question), actions: [] as AssistantAction[], provider: "rule-based" as const };
   };
 
+  // The assistant can change the cart, so a retried request must not apply it twice.
   app.post("/api/life/assistant", async (request) => {
+    const key = String(request.headers["idempotency-key"] ?? "");
+    const cacheKey = key ? `assistant:${key}` : undefined;
+    const cached = store.getIdempotentResult<{ answer: unknown }>(cacheKey);
+    if (cached) return cached;
     const body = AssistantAskInputSchema.parse(request.body ?? {});
-    return { answer: await answerQuestion(svc(request), body.question, body.history, body.image) };
+    const result = { answer: await answerQuestion(svc(request), body.question, body.history, body.image) };
+    if (result.answer.actions.length > 0) store.setIdempotentResult(cacheKey, result);
+    return result;
   });
 
   // Voice: Sarvam speech-to-text, then the same contextual answer.

@@ -10,8 +10,8 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { QueryBoundary } from "@/components/ui/QueryBoundary";
-import { useKitchenSample, type KitchenSample } from "@/hooks/life";
-import type { CartItem } from "@/mocks/types";
+import { useCartView, useKitchenSample, useRemoveCartItem, useSetCartQuantity, type KitchenSample } from "@/hooks/life";
+import type { CartView as CartData } from "@/lib/lifeApi";
 
 function PlatformBadge({ platform }: { platform?: string }) {
   const colors: Record<string, { bg: string; text: string }> = {
@@ -32,29 +32,33 @@ function PlatformBadge({ platform }: { platform?: string }) {
 
 export function SmartCartPage() {
   const sample = useKitchenSample();
-  return <QueryBoundary query={sample}>{(data) => <CartView sample={data} />}</QueryBoundary>;
+  const cart = useCartView();
+  return (
+    <QueryBoundary query={sample}>
+      {(data) => <QueryBoundary query={cart}>{(view) => <CartView budgetData={data.budget} cart={view} />}</QueryBoundary>}
+    </QueryBoundary>
+  );
 }
 
-function CartView({ sample }: { sample: KitchenSample }) {
-  const { cart: smartCart, budget: budgetData } = sample;
-  const [items, setItems] = useState<CartItem[]>([...smartCart]);
+// Quantities and prices come from the API; this view only sends changes.
+function CartView({ budgetData, cart }: { budgetData: KitchenSample["budget"]; cart: CartData }) {
+  const { items, totals } = cart;
+  const setQuantity = useSetCartQuantity();
+  const remove = useRemoveCartItem();
   const [checkoutMode, setCheckoutMode] = useState(false);
   const [checkedOut, setCheckedOut] = useState(false);
 
-  const total = items.reduce((s, i) => s + i.estimatedPrice * i.quantity, 0);
+  const total = totals.total;
   const remainingBudget = budgetData.remaining;
-  const overBudget = total > remainingBudget;
+  const overBudget = remainingBudget > 0 && total > remainingBudget;
+  const busy = setQuantity.isPending || remove.isPending;
 
-  function updateQuantity(id: string, delta: number) {
-    setItems((prev) =>
-      prev
-        .map((i) => (i.id === id ? { ...i, quantity: Math.max(0, i.quantity + delta) } : i))
-        .filter((i) => i.quantity > 0),
-    );
+  function updateQuantity(id: string, current: number, delta: number) {
+    setQuantity.mutate({ id, quantity: Math.max(0, current + delta) });
   }
 
   function removeItem(id: string) {
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    remove.mutate(id);
   }
 
   function handleCheckout() {
@@ -80,7 +84,7 @@ function CartView({ sample }: { sample: KitchenSample }) {
           Items will be delivered to your doorstep. Your pantry will update automatically once delivered.
         </p>
         <button
-          onClick={() => { setCheckedOut(false); setCheckoutMode(false); setItems([...smartCart]); }}
+          onClick={() => { setCheckedOut(false); setCheckoutMode(false); }}
           className="btn-secondary text-[13px]"
         >
           Back to Cart
@@ -115,12 +119,18 @@ function CartView({ sample }: { sample: KitchenSample }) {
         </div>
       </div>
 
+      {(setQuantity.isError || remove.isError) && (
+        <p role="alert" className="rounded-[8px] bg-[var(--color-danger-bg)] px-3 py-2.5 text-[13px] text-[var(--color-danger)]">
+          Couldn't update your cart. Please try again.
+        </p>
+      )}
+
       {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center fade-in-up">
           <Package size={40} className="text-[var(--color-text-tertiary)] mb-3" strokeWidth={1.25} />
           <p className="text-[15px] font-medium text-[var(--color-text-secondary)]">Your cart is empty</p>
           <p className="text-[13px] text-[var(--color-text-tertiary)] mt-1">
-            AI will add items when stock runs low
+            Ask the assistant, e.g. "add bread to my cart"
           </p>
         </div>
       ) : (
@@ -130,13 +140,13 @@ function CartView({ sample }: { sample: KitchenSample }) {
             {items.map((item) => (
               <div
                 key={item.id}
-                className="card-base p-4 flex items-center gap-4"
+                className="card-base p-4 flex flex-wrap items-center gap-x-4 gap-y-2"
               >
-                <div className="w-10 h-10 rounded-[10px] bg-[var(--color-surface-subtle)] flex items-center justify-center text-[18px] shrink-0">
-                  📦
+                <div className="w-10 h-10 rounded-[10px] bg-[var(--color-surface-subtle)] flex items-center justify-center shrink-0">
+                  <Package size={18} strokeWidth={1.5} className="text-[var(--color-text-secondary)]" aria-hidden />
                 </div>
 
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-[150px]">
                   <div className="flex items-center gap-2">
                     <p className="text-[14px] font-medium text-[var(--color-text-primary)] truncate">
                       {item.name}
@@ -144,36 +154,44 @@ function CartView({ sample }: { sample: KitchenSample }) {
                     <PlatformBadge platform={item.platform} />
                   </div>
                   <p className="text-[12px] text-[var(--color-text-tertiary)] mt-0.5 line-clamp-1">
-                    {item.reason}
+                    {item.quantity} {item.unit}
+                    {item.reason ? ` · ${item.reason}` : ""}
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="ml-auto flex items-center gap-2 shrink-0">
                   <div className="flex items-center gap-1 bg-[var(--color-surface-subtle)] rounded-[8px] p-0.5">
                     <button
-                      onClick={() => updateQuantity(item.id, -1)}
-                      className="w-7 h-7 rounded-[6px] flex items-center justify-center hover:bg-[var(--color-border)] transition-colors duration-[120ms]"
-                      aria-label="Decrease quantity"
+                      onClick={() => updateQuantity(item.id, item.quantity, -1)}
+                      disabled={busy}
+                      className="w-11 h-11 rounded-[6px] flex items-center justify-center hover:bg-[var(--color-border)] transition-colors duration-[120ms] disabled:opacity-50"
+                      aria-label={`Decrease ${item.name}`}
                     >
                       <Minus size={14} />
                     </button>
                     <span className="text-[13px] font-medium w-6 text-center">{item.quantity}</span>
                     <button
-                      onClick={() => updateQuantity(item.id, 1)}
-                      className="w-7 h-7 rounded-[6px] flex items-center justify-center hover:bg-[var(--color-border)] transition-colors duration-[120ms]"
-                      aria-label="Increase quantity"
+                      onClick={() => updateQuantity(item.id, item.quantity, 1)}
+                      disabled={busy}
+                      className="w-11 h-11 rounded-[6px] flex items-center justify-center hover:bg-[var(--color-border)] transition-colors duration-[120ms] disabled:opacity-50"
+                      aria-label={`Increase ${item.name}`}
                     >
                       <Plus size={14} />
                     </button>
                   </div>
 
                   <p className="text-[14px] font-semibold text-[var(--color-text-primary)] w-16 text-right">
-                    ₹{(item.estimatedPrice * item.quantity).toLocaleString()}
+                    {item.priceUnknown ? (
+                      <span className="text-[12px] font-normal text-[var(--color-text-tertiary)]">Price TBD</span>
+                    ) : (
+                      `₹${item.estimatedPrice.toLocaleString()}`
+                    )}
                   </p>
 
                   <button
                     onClick={() => removeItem(item.id)}
-                    className="w-8 h-8 rounded-[6px] flex items-center justify-center text-[var(--color-text-tertiary)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)] transition-colors duration-[120ms]"
+                    disabled={busy}
+                    className="w-11 h-11 rounded-[6px] flex items-center justify-center text-[var(--color-text-tertiary)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)] transition-colors duration-[120ms]"
                     aria-label={`Remove ${item.name}`}
                   >
                     <Trash2 size={14} />
@@ -187,7 +205,9 @@ function CartView({ sample }: { sample: KitchenSample }) {
           <div className="card-base p-5 space-y-4 fade-in-up stagger-4">
             <div className="space-y-2">
               <div className="flex justify-between text-[13px]">
-                <span className="text-[var(--color-text-secondary)]">Subtotal ({items.length} items)</span>
+                <span className="text-[var(--color-text-secondary)]">
+                  Subtotal ({items.length} items{totals.unpriced ? `, ${totals.unpriced} priced at checkout` : ""})
+                </span>
                 <span className="font-medium">₹{total.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-[13px]">

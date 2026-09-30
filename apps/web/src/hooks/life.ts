@@ -88,13 +88,56 @@ export const useAddListing = () =>
 export const useSetFactors = () => useLifeMutation(life.setImpactFactors);
 export const useSetScope = () =>
   useLifeMutation((v: { module: ModuleId; enabled: boolean }) => life.setScope(v.module, v.enabled));
-export const useAsk = () =>
-  useMutation({
+/** Everything derived from the cart: the cart itself plus spending in overview and summary. */
+function useInvalidateCart() {
+  const qc = useQueryClient();
+  return () =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: K.cart }),
+      qc.invalidateQueries({ queryKey: K.overview }),
+      qc.invalidateQueries({ queryKey: K.summary }),
+    ]);
+}
+
+export const useAsk = () => {
+  const invalidateCart = useInvalidateCart();
+  return useMutation({
     mutationFn: (v: { question: string; history: life.AssistantTurn[]; image?: string }) =>
       life.askAssistant(v.question, v.history, v.image),
+    onSuccess: (answer) => {
+      if (answer.actions?.length) void invalidateCart();
+    },
   });
-export const useAskByVoice = () =>
-  useMutation({ mutationFn: (v: { audio: Blob; history: life.AssistantTurn[] }) => life.askAssistantByVoice(v.audio, v.history) });
+};
+export const useAskByVoice = () => {
+  const invalidateCart = useInvalidateCart();
+  return useMutation({
+    mutationFn: (v: { audio: Blob; history: life.AssistantTurn[] }) => life.askAssistantByVoice(v.audio, v.history),
+    onSuccess: (out) => {
+      if (out.answer.actions?.length) void invalidateCart();
+    },
+  });
+};
+
+export const useCartView = () => useQuery({ queryKey: [...K.cart, "view"], queryFn: life.getCartView });
+
+export const useAddCartItem = () => {
+  const invalidateCart = useInvalidateCart();
+  return useMutation({ mutationFn: life.addCartItem, onSettled: invalidateCart });
+};
+
+export const useSetCartQuantity = () => {
+  const invalidateCart = useInvalidateCart();
+  return useMutation({
+    mutationFn: (v: { id: string; quantity: number }) => life.setCartItemQuantity(v.id, v.quantity),
+    onSettled: invalidateCart,
+  });
+};
+
+export const useRemoveCartItem = () => {
+  const invalidateCart = useInvalidateCart();
+  return useMutation({ mutationFn: life.removeCartItem, onSettled: invalidateCart });
+};
 
 /** Cart, monthly budget and weekly meal plan, loaded together for kitchen screens. */
 export function useKitchenSample() {

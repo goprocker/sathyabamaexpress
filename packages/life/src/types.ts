@@ -40,7 +40,8 @@ export interface LifeCartItem {
   quantity: number;
   unit: string;
   estimatedPrice: number;
-  source: "auto" | "manual" | "recipe";
+  priceUnknown?: boolean | undefined;
+  source: "auto" | "manual" | "recipe" | "assistant";
   reason?: string;
   platform?: "zepto" | "blinkit" | "manual";
 }

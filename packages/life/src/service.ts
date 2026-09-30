@@ -242,7 +242,13 @@ export class LifeService {
         unit: i.unit,
         daysRemaining: i.daysRemaining ?? null,
       })),
-      smartCart: inputs.cart.map((c) => ({ name: c.name, quantity: c.quantity, unit: c.unit, estimatedPrice: c.estimatedPrice, reason: c.reason })),
+      smartCart: inputs.cart.map((c) => ({
+        name: c.name,
+        quantity: c.quantity,
+        unit: c.unit,
+        ...(c.priceUnknown ? { price: "not known yet" } : { estimatedPrice: c.estimatedPrice }),
+        reason: c.reason,
+      })),
       obligations: inputs.obligations.map((o) => ({
         title: o.title,
         provider: o.provider,

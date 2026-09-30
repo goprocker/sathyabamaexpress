@@ -419,10 +419,19 @@ export async function parseObligationWithOpenAI(
 
 
 
+/** A cart change the user asked for. The API validates and applies it; the model never edits state. */
+export interface RequestedCartAction {
+  type: "cart_add" | "cart_remove";
+  name: string;
+  quantity: number;
+  unit: string;
+}
+
 export interface ContextualAnswer {
   text: string;
   bullets: string[];
   modules: string[];
+  actions: RequestedCartAction[];
 }
 
 const ASSISTANT_SYSTEM_PROMPT = `You are Livora, a household assistant. You are given a JSON snapshot of ONE household (timeline, pantry, smart cart, bills and obligations, forecasts, commute and EV, wardrobe). That snapshot is your only source of facts.
@@ -435,7 +444,9 @@ Rules:
 - Questions unrelated to the household: answer briefly and helpfully, then tie back to the household only if natural.
 - Reply in the language the user wrote in (English, Tamil, or Tanglish). Keep "text" to 1-2 short sentences; put specifics in "bullets" (max 6, each under 120 characters). Amounts in rupees as ₹.
 - "modules" lists which snapshot areas you used, from: timeline, pantry, cart, admin, mobility, circular.
-Return JSON: {"text": string, "bullets": string[], "modules": string[]}.`;
+- The snapshot's "smartCart" array is the user's current cart, including items they added. Answer questions about the cart (what is in it, is X in it, how much) directly from it. Items with price "not known yet" have no price; never estimate one.
+- Cart requests: when the user asks to add something to (or remove something from) the cart or shopping list, in any wording or language ("add bread to cart", "add cart bread", "cart-la 2 litre milk podu", "remove eggs from cart"), put one entry per item in "actions": {"type": "cart_add" | "cart_remove", "name": the item in English singular title case (e.g. "Bread", "Milk"), "quantity": number (default 1), "unit": one of pc, pack, loaf, kg, g, L, ml, dozen (default "pc")}. The app performs the change and confirms it, so keep "text" to a short acknowledgement and never claim a price. Only create actions when the user clearly asks; a question like "is bread in my cart?" is not a request.
+Return JSON: {"text": string, "bullets": string[], "modules": string[], "actions": array}.`;
 
 export async function answerWithHouseholdContext(options: {
   question: string;
@@ -470,5 +481,22 @@ export async function answerWithHouseholdContext(options: {
     text,
     bullets: Array.isArray(raw.bullets) ? raw.bullets.filter((b): b is string => typeof b === "string").slice(0, 6) : [],
     modules: Array.isArray(raw.modules) ? raw.modules.filter((m): m is string => typeof m === "string") : [],
+    actions: Array.isArray(raw.actions) ? raw.actions.flatMap(readCartAction).slice(0, 10) : [],
   };
+}
+
+const CART_UNITS = new Set(["pc", "pack", "loaf", "kg", "g", "L", "ml", "dozen"]);
+
+function readCartAction(value: unknown): RequestedCartAction[] {
+  if (typeof value !== "object" || value === null) return [];
+  const a = value as Record<string, unknown>;
+  const type = a.type === "cart_add" || a.type === "cart_remove" ? a.type : null;
+  const name = typeof a.name === "string" ? a.name.trim().slice(0, 80) : "";
+  if (!type || !name) return [];
+  const quantity = typeof a.quantity === "number" && a.quantity > 0 && a.quantity <= 1000 ? a.quantity : 1;
+  let unit = typeof a.unit === "string" && CART_UNITS.has(a.unit) ? a.unit : "pc";
+  // Dozens are stored as pieces so they merge with existing entries.
+  const qty = unit === "dozen" ? quantity * 12 : quantity;
+  if (unit === "dozen") unit = "pc";
+  return [{ type, name, quantity: qty, unit }];
 }

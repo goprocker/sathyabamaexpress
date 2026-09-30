@@ -11,6 +11,7 @@ import {
   type TransportMode,
   type WardrobeCategory,
 } from "@household/life";
+import type { AssistantAction, CartItem } from "@household/contracts";
 import * as seed from "@/mocks/data";
 import { API_BASE } from "./api";
 import { authEnabled, authHeaders } from "./auth";
@@ -21,7 +22,8 @@ export type Mobility = ReturnType<LifeService["mobility"]>;
 export type Circular = ReturnType<LifeService["circular"]>;
 export type OccasionPlan = ReturnType<LifeService["occasionPlan"]>;
 export type Notifications = ReturnType<LifeService["notifications"]>;
-export type Answer = ReturnType<LifeService["ask"]>;
+/** Rule-based answers carry no actions; API answers may report cart changes the assistant made. */
+export type Answer = ReturnType<LifeService["ask"]> & { actions?: AssistantAction[]; provider?: string };
 export type CatalogRecipeView = ReturnType<LifeService["recipes"]>[number];
 export type Plans = ReturnType<LifeService["plans"]>;
 export type SearchHit = ReturnType<LifeService["search"]>[number];
@@ -172,9 +174,17 @@ export interface AssistantTurn {
   a: string;
 }
 
+// The idempotency key keeps a retried request from applying a cart change twice.
 export const askAssistant = async (question: string, history: AssistantTurn[] = [], image?: string): Promise<Answer> =>
-  (await write<{ answer: Answer }>("/life/assistant", "POST", { question, history, image }, (s) => ({ answer: s.ask(question) })))
-    .answer;
+  (
+    await write<{ answer: Answer }>(
+      "/life/assistant",
+      "POST",
+      { question, history, image },
+      (s) => ({ answer: s.ask(question) }),
+      idem(),
+    )
+  ).answer;
 
 /** Sends recorded audio to the API (Sarvam speech-to-text), which answers the transcript in household context. */
 export async function askAssistantByVoice(
@@ -305,8 +315,42 @@ export const setScope = async (module: ModuleId, enabled: boolean) =>
 
 export const getPlans = () => read<Plans>("/plans", (s) => s.plans());
 
-export const getCart = async () =>
-  (await request<{ items: typeof seed.smartCart }>("/cart"))?.items ?? seed.smartCart;
+export interface CartView {
+  items: CartItem[];
+  totals: { count: number; total: number; unpriced: number };
+}
+
+export const getCart = async (): Promise<CartItem[]> => (await getCartView()).items;
+
+export async function getCartView(): Promise<CartView> {
+  const remote = await request<CartView>("/cart");
+  if (remote) return remote;
+  const items = seed.smartCart as CartItem[];
+  return { items, totals: { count: items.length, total: items.reduce((s, c) => s + c.estimatedPrice, 0), unpriced: 0 } };
+}
+
+/** Cart changes need the API: there is no offline copy of the cart to edit. */
+async function cartWrite<T>(path: string, init: RequestInit): Promise<T> {
+  const out = await request<T>(path, init);
+  if (out === undefined) throw new Error("The cart service is unreachable.");
+  return out;
+}
+
+export const addCartItem = (input: { name: string; quantity?: number; unit?: string }) =>
+  cartWrite<{ item: CartItem | null; previousQuantity: number }>("/cart/items", {
+    method: "POST",
+    body: JSON.stringify(input),
+    headers: idem(),
+  });
+
+export const setCartItemQuantity = (id: string, quantity: number) =>
+  cartWrite<{ item: CartItem | null; previousQuantity: number }>(`/cart/items/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ quantity }),
+  });
+
+export const removeCartItem = (id: string) =>
+  cartWrite<{ ok: true }>(`/cart/items/${encodeURIComponent(id)}`, { method: "DELETE" });
 
 export const getBudget = async () =>
   (await request<{ budget: typeof seed.budgetData }>("/budget"))?.budget ?? seed.budgetData;
