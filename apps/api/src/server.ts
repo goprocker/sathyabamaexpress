@@ -10,7 +10,21 @@ const HOST = process.env.HOST || "0.0.0.0";
 
 async function start() {
   const clerkSecretKey = process.env.CLERK_SECRET_KEY?.trim() || undefined;
-  const app = buildApiApp(undefined, { clerkSecretKey });
+  // Restock check timer (minutes); 0 turns it off. Default: every 30 minutes.
+  const reorderMinutes = Number(process.env.REORDER_SCAN_INTERVAL_MINUTES ?? 30);
+  const reorderScanIntervalMs = Number.isFinite(reorderMinutes) && reorderMinutes > 0 ? reorderMinutes * 60_000 : undefined;
+  // Phone ordering: watch the Snapserve ordering agent's calls (scripts/setup-order-agents.ts creates it).
+  const orderAgentId = Number(process.env.SNAPSERVE_ORDER_AGENT_ID);
+  // Exactly one process may watch the line, or two servers sharing the database
+  // would both call the store: production by default, dev only with PHONE_ORDER_WATCHER=on.
+  const watcherSetting = process.env.PHONE_ORDER_WATCHER?.trim().toLowerCase();
+  const watchLine = watcherSetting ? watcherSetting === "on" : process.env.NODE_ENV === "production";
+  const phoneOrders =
+    watchLine && Number.isInteger(orderAgentId) && orderAgentId > 0 && process.env.SNAPSERVE_API_KEY?.trim()
+      ? { agentId: orderAgentId, pollMs: Math.max(5_000, Number(process.env.SNAPSERVE_ORDER_POLL_MS) || 15_000) }
+      : undefined;
+  const app = buildApiApp(undefined, { clerkSecretKey, reorderScanIntervalMs, phoneOrders });
+  if (phoneOrders) console.log(`[Household Intelligence API] Watching Snapserve agent ${phoneOrders.agentId} for phone orders`);
   console.log(
     clerkSecretKey
       ? "[Household Intelligence API] Clerk auth enforced"

@@ -190,7 +190,8 @@ export interface VendorCallScript {
 export function buildVendorCallScript(
   input: VendorCallScriptInput
 ): VendorCallScript {
-  const householdName = input.householdName || "Sai's home";
+  // "Adyar Residence · Household Intelligence" → "Adyar Residence" when spoken.
+  const householdName = input.householdName?.split(" · ")[0]?.trim() || "Sai's home";
   const itemList = input.items.map((i) => `${i.orderDisplay} ${i.name}`);
   const joined = itemList.join(" and ");
   const deliveryWindow =

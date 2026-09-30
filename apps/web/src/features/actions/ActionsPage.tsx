@@ -17,11 +17,10 @@ import {
 import {
   useActions,
   useApproveAction,
-  useCompleteSnapserve,
   useRejectAction,
   useVerifyDelivery,
 } from "@/hooks/queries";
-import { snapserveProgress, subscribeToHouseholdEvents } from "@/lib/api";
+import { subscribeToHouseholdEvents } from "@/lib/api";
 import type { ActionItem, ActionStatus, SnapserveState } from "@/mocks/types";
 
 const statusPill: Record<ActionStatus, { tone: PillTone; label: string }> = {
@@ -50,11 +49,14 @@ const backendStatusToSnapState: Record<string, SnapserveState> = {
   FAILED: "Failed",
 };
 
+const CALL_POLL_MS = 2500;
+/** A live call times out server-side after 120 s; stop watching a little later. */
+const CALL_WATCH_LIMIT_MS = 180_000;
+
 export function ActionsPage() {
   const { data, isPending, isError, refetch } = useActions();
   const approve = useApproveAction();
   const reject = useRejectAction();
-  const complete = useCompleteSnapserve();
   const verifyDelivery = useVerifyDelivery();
 
   const [executingId, setExecutingId] = useState<string | null>(null);
@@ -74,7 +76,8 @@ export function ActionsPage() {
         }
       } else if (
         eventType === "ACTION_RECONCILED" ||
-        eventType === "DELIVERY_VERIFIED"
+        eventType === "DELIVERY_VERIFIED" ||
+        eventType === "REORDER_PROPOSED"
       ) {
         void refetch();
       }
@@ -88,24 +91,31 @@ export function ActionsPage() {
   async function handleApprove(action: ActionItem) {
     setExecutingId(action.id);
     setSnapState("Preparing");
-    const steps = await approve
-      .mutateAsync(action.id)
-      .catch(() => snapserveProgress(action));
-    let last = 0;
-    for (const step of steps) {
-      last = step.afterMs;
-      timers.current.push(
-        setTimeout(() => setSnapState(step.state), step.afterMs)
-      );
+    const res = await approve.mutateAsync(action.id).catch(() => null);
+    if (!res || res.alreadyProcessed) {
+      setExecutingId(null);
+      void refetch();
+      return;
     }
-    timers.current.push(
-      setTimeout(() => {
-        void complete.mutateAsync(action.id).finally(() => {
-          setExecutingId(null);
-          void refetch();
-        });
-      }, last + 500)
-    );
+    let last = 0;
+    for (const step of res.steps) {
+      last = step.afterMs;
+      timers.current.push(setTimeout(() => setSnapState(step.state), step.afterMs));
+    }
+    // The call runs on the server (a live call takes 30–120 s). Follow it until
+    // the order is confirmed or failed; SSE progress updates the steps meanwhile.
+    const started = Date.now();
+    const poll = async () => {
+      const { data: list } = await refetch();
+      const current = list?.find((a) => a.id === action.id);
+      const settled = !current || !["proposed", "approved", "executing"].includes(current.status);
+      if (settled || Date.now() - started > CALL_WATCH_LIMIT_MS) {
+        setExecutingId(null);
+        return;
+      }
+      timers.current.push(setTimeout(() => void poll(), CALL_POLL_MS));
+    };
+    timers.current.push(setTimeout(() => void poll(), Math.max(last + 300, CALL_POLL_MS)));
   }
 
   async function handleVerifyDelivery(
@@ -304,8 +314,22 @@ function ActionCard({
       <Divider />
       <div className="py-3">
         <p className="eyebrow">Why</p>
-        <p className="mt-1 text-small text-text-secondary">{action.reason}</p>
-        {action.evidence && (
+        {action.origin === "INVENTORY_REORDER" && action.evidenceLines?.length ? (
+          <ul className="mt-2 divide-y divide-border rounded-[8px] border border-border" aria-label="Items to restock">
+            {action.evidenceLines.map((line) => (
+              <li key={line.name} className="flex items-start justify-between gap-3 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-small font-medium text-text-primary">{line.name}</p>
+                  <p className="text-meta">{line.headline}</p>
+                </div>
+                <span className="shrink-0 text-small font-medium tabular-nums text-text-primary">+{line.order}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-small text-text-secondary">{action.reason}</p>
+        )}
+        {action.evidence && action.origin !== "INVENTORY_REORDER" && (
           <div className="mt-3 grid grid-cols-3 gap-2">
             <EvidenceCell label="Required" value={action.evidence.required} />
             <EvidenceCell label="Available" value={action.evidence.available} />

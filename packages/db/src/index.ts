@@ -7,6 +7,8 @@ import type {
   AgentRunTrace,
   BaseUnit,
   CartItem,
+  HouseholdNotification,
+  PushSubscriptionInput,
   DisplayUnit,
   ExpectationRecord,
   Forecast,
@@ -103,6 +105,10 @@ export interface CanonicalStateData {
   profile?: HouseholdProfile;
   /** The shared demo household: sample data everywhere, no uploads, no live calls. */
   isDemo?: boolean;
+  /** Inventory and transaction notifications, newest first. Absent in older saved state. */
+  notifications?: HouseholdNotification[];
+  /** Browsers/phones that asked for push notifications. */
+  pushSubscriptions?: Array<PushSubscriptionInput & { createdAt: string }>;
 }
 
 export function emptyCanonicalState(): CanonicalStateData {

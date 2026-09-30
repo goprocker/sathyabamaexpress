@@ -102,6 +102,9 @@ export function subscribeToHouseholdEvents(
     "ACTION_APPROVED",
     "ACTION_REJECTED",
     "SNAPSERVE_STATUS",
+    "SNAPSERVE_CALL_PROGRESS",
+    "REORDER_PROPOSED",
+    "NOTIFICATIONS_UPDATED",
     "ACTION_RECONCILED",
     "DELIVERY_RECONCILED",
     "DEMO_RESET",
@@ -773,27 +776,43 @@ export async function getActions(): Promise<ActionItem[]> {
   return [...store.actions];
 }
 
-export async function approveAction(id: string) {
+export interface ApproveActionResult {
+  /** Canned progress for the simulator; empty for a live call (progress arrives over SSE). */
+  steps: Array<{ state: SnapserveState; afterMs: number }>;
+  live: boolean;
+  /** The action was already approved or handled; nothing new was started. */
+  alreadyProcessed: boolean;
+}
+
+/** Approves the action; the server issues the approval token and places the Snapserve call in the background. */
+export async function approveAction(id: string): Promise<ApproveActionResult> {
   const remote = await apiFetch<{
     steps?: Array<{ state: SnapserveState; afterMs: number }>;
+    live?: boolean;
+    alreadyProcessed?: boolean;
   }>(`/actions/${encodeURIComponent(id)}/approve`, {
     method: "POST",
-    body: JSON.stringify({
-      userId: "usr_sai_001",
-      stepDelayMs: 250,
-    }),
+    body: JSON.stringify({ asyncExecution: true, idempotencyKey: `approve_${id}` }),
   });
 
-  if (remote && Array.isArray(remote.steps)) {
-    return remote.steps;
+  if (remote) {
+    return {
+      steps: Array.isArray(remote.steps) ? remote.steps : [],
+      live: Boolean(remote.live),
+      alreadyProcessed: Boolean(remote.alreadyProcessed),
+    };
   }
 
-  return [
-    { state: "Calling" as const, afterMs: 900 },
-    { state: "Connected" as const, afterMs: 1800 },
-    { state: "Awaiting response" as const, afterMs: 2700 },
-    { state: "Confirmed" as const, afterMs: 3800 },
-  ];
+  return {
+    steps: [
+      { state: "Calling" as const, afterMs: 900 },
+      { state: "Connected" as const, afterMs: 1800 },
+      { state: "Awaiting response" as const, afterMs: 2700 },
+      { state: "Confirmed" as const, afterMs: 3800 },
+    ],
+    live: false,
+    alreadyProcessed: false,
+  };
 }
 
 export async function rejectAction(id: string) {

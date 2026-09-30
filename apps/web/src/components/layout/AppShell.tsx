@@ -1,3 +1,4 @@
+import { useLiveNotifications } from "@/hooks/life";
 import type { ReactNode } from "react";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 import { DemoBanner } from "./DemoBanner";
@@ -6,6 +7,7 @@ import { TopNav } from "./TopNav";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const isMobile = useIsMobile();
+  useLiveNotifications();
 
   return (
     <div className="min-h-dvh">

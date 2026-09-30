@@ -78,7 +78,18 @@ function qs(request: { query: unknown }): Record<string, string | undefined> {
   return (request.query as Record<string, string | undefined>) ?? {};
 }
 
-export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) {
+export interface LifeRouteHooks {
+  /** Runs after a route changes stock (e.g. restock check), before the response is sent. */
+  afterInventoryChange?: (trigger: string) => Promise<unknown>;
+  /** The household's real inventory and order notifications, merged into the notification centre. */
+  householdNotifications?: {
+    refresh: () => Promise<unknown>;
+    feed: () => Array<{ id: string; group: string; module: ModuleId; title: string; detail: string; minutesAgo: number; href: string; read: boolean }>;
+    markRead: (ids: string[] | "all") => void;
+  };
+}
+
+export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore, hooks: LifeRouteHooks = {}) {
   const services = new Map<string, LifeService>();
   const seen = new Map<string, unknown>();
   const owner = () => `${currentUser()?.userId ?? "demo"}:`;
@@ -440,6 +451,7 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
     if (!result.ok) {
       return reply.code(409).send({ error: "Some ingredients are short.", shortfalls: result.shortfalls });
     }
+    await hooks.afterInventoryChange?.(`Cooked ${recipe.name}`);
     return { ...result, recipe: recipe.name, servings };
   });
 
@@ -460,11 +472,35 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
   });
 
   // ── Notifications ─────────────────────────────────────────────────────
-  app.get("/api/notifications", async (request) => svc(request).notifications());
+  app.get("/api/notifications", async (request) => {
+    const sample = svc(request).notifications();
+    const own = hooks.householdNotifications;
+    if (!own) return sample;
+    await own.refresh();
+    // Real stock alerts replace the sample "Running low" notices.
+    const sampleGroups = sample.groups.filter((g) => g.title !== "Running low");
+    const byGroup = new Map<string, ReturnType<typeof own.feed>>();
+    for (const item of own.feed()) byGroup.set(item.group, [...(byGroup.get(item.group) ?? []), item]);
+    const ownGroups = [...byGroup.entries()].map(([title, items]) => ({
+      title,
+      items,
+      unread: items.filter((i) => !i.read).length,
+      newestMinutes: Math.min(...items.map((i) => i.minutesAgo)),
+    }));
+    const groups = [...ownGroups, ...sampleGroups].sort((a, b) => a.newestMinutes - b.newestMinutes);
+    return { groups, unread: groups.reduce((sum, g) => sum + g.unread, 0) };
+  });
 
   app.post("/api/notifications/read", async (request) => {
     const body = NotificationsReadInputSchema.parse(request.body ?? {});
-    svc(request).markRead(body.ids);
+    if (body.ids === "all") {
+      svc(request).markRead("all");
+      hooks.householdNotifications?.markRead("all");
+    } else {
+      const own = body.ids.filter((id) => id.startsWith("ntf_"));
+      svc(request).markRead(body.ids.filter((id) => !id.startsWith("ntf_")));
+      if (own.length) hooks.householdNotifications?.markRead(own);
+    }
     return { ok: true };
   });
 

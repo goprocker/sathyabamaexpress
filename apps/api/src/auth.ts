@@ -15,6 +15,8 @@ const PUBLIC_PREFIXES = [
   "/api/webhooks/",
   // EventSource cannot send an Authorization header, so the stream takes ?token= and checks it itself.
   "/api/events/stream",
+  // Same for WebSocket upgrades; the live transcription route verifies ?token= before upgrading.
+  "/api/voice/stream",
 ];
 
 /**

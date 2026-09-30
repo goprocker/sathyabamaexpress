@@ -244,6 +244,10 @@ export interface ActionItem {
   };
   vendor: string;
   estimatedCost: string;
+  /** What produced the proposal, e.g. "INVENTORY_REORDER" for automatic restock calls. */
+  origin?: "MEAL_SHORTAGE" | "INVENTORY_REORDER" | "DELIVERY_SHORTFALL" | null;
+  /** Per-item evidence for multi-item orders. */
+  evidenceLines?: Array<{ name: string; headline: string; available: string; order: string }>;
   status: ActionStatus;
   createdAt: string;
   expectations?: ExpectationItem[];

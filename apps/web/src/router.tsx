@@ -21,6 +21,7 @@ import { ObligationsPage } from "@/features/obligations/ObligationsPage";
 import { ForecastsPage } from "@/features/forecasts/ForecastsPage";
 import { RipplePage } from "@/features/ripple/RipplePage";
 import { ActionsPage } from "@/features/actions/ActionsPage";
+import { StoresPage } from "@/features/stores/StoresPage";
 import { ActivityPage } from "@/features/activity/ActivityPage";
 import { VoicePage } from "@/features/voice/VoicePage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
@@ -159,6 +160,12 @@ const actionsRoute = createRoute({
   component: () => shell(<ActionsPage />),
 });
 
+const storesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/stores",
+  component: () => shell(<StoresPage />),
+});
+
 const activityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/activity",
@@ -259,6 +266,7 @@ const routeTree = rootRoute.addChildren([
   profileRoute,
   rippleRoute,
   actionsRoute,
+  storesRoute,
   activityRoute,
   obligationsRoute,
   forecastsRoute,

@@ -5,6 +5,7 @@ import { LivoraMark } from "./LivoraMark";
 import { SearchOverlay } from "./SearchOverlay";
 import { isNavActive, navGroups, primaryNav } from "./nav";
 import { useNotifications } from "@/hooks/life";
+import { setAppBadge } from "@/lib/pwa";
 import { AccountButton } from "@/components/auth/AccountButton";
 import { useAccount } from "@/lib/auth";
 import { useActiveProfile } from "@/lib/profile";
@@ -41,6 +42,9 @@ export function TopNav() {
   const wrapRef = useRef<HTMLElement>(null);
   const unread = useNotifications().data?.unread ?? 0;
   const { active, members, setActive } = useActiveProfile();
+
+  // Unread count on the installed app's icon.
+  useEffect(() => setAppBadge(unread), [unread]);
 
   useEffect(() => setOpen(false), [pathname]);
 

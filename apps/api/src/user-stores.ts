@@ -78,6 +78,11 @@ export class UserStores {
     this.writing.set(userId, p);
   }
 
+  /** Every user with a household, saved or currently open. */
+  async listUserIds(): Promise<string[]> {
+    return [...new Set([...this.cache.keys(), ...(await this.backend.listUserIds())])];
+  }
+
   /** Resolves once everything queued for this user is on disk / in the database. */
   async flush(userId: string): Promise<void> {
     await this.writing.get(userId);

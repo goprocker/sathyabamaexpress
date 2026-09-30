@@ -12,6 +12,8 @@ export interface StateBackend {
   save(userId: string, state: CanonicalStateData): Promise<void>;
   /** Which user owns the action with this vendor-call id (Snapserve webhooks carry no user). */
   findUserByCall(callId: string): Promise<string | null>;
+  /** Every user with saved state, for background jobs such as the restock check. */
+  listUserIds(): Promise<string[]>;
 }
 
 const ownsCall = (state: CanonicalStateData, callId: string) =>
@@ -58,6 +60,14 @@ export class FileStateBackend implements StateBackend {
       }
     }
     return null;
+  }
+
+  async listUserIds() {
+    try {
+      return (await fs.readdir(this.dir)).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -".json".length));
+    } catch {
+      return [];
+    }
   }
 }
 
@@ -113,6 +123,12 @@ export class PostgresStateBackend implements StateBackend {
     );
     return res.rows[0]?.user_id ?? null;
   }
+
+  async listUserIds() {
+    const pool = await this.init();
+    const res = await pool.query<{ user_id: string }>("select user_id from livora_user_state");
+    return res.rows.map((r) => r.user_id);
+  }
 }
 
 export class MemoryStateBackend implements StateBackend {
@@ -128,6 +144,9 @@ export class MemoryStateBackend implements StateBackend {
   async findUserByCall(callId: string) {
     for (const [userId, state] of this.saved) if (ownsCall(state, callId)) return userId;
     return null;
+  }
+  async listUserIds() {
+    return [...this.saved.keys()];
   }
 }
 

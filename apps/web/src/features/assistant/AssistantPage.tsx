@@ -6,6 +6,7 @@ import { useAddCartItem, useAsk, useAskByVoice, useRemoveCartItem, useSetCartQua
 import type { AssistantAction } from "@household/contracts";
 import { resizeImage } from "@/lib/image";
 import type { Answer } from "@/lib/lifeApi";
+import { liveTranscriptionSupported, startLiveTranscription, type LiveTranscription } from "@/lib/voiceStream";
 
 interface Turn {
   id: number;
@@ -24,10 +25,6 @@ interface RecognitionLike {
   stop: () => void;
 }
 type RecognitionCtor = new () => RecognitionLike;
-
-function canRecord(): boolean {
-  return typeof window !== "undefined" && typeof MediaRecorder !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
-}
 
 function speak(text: string) {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
@@ -55,9 +52,12 @@ export function AssistantPage() {
   const endRef = useRef<HTMLDivElement>(null);
   const seeded = useRef(false);
   const turnsRef = useRef<Turn[]>([]);
-  const recorderRef = useRef<MediaRecorder | null>(null);
+  const liveRef = useRef<LiveTranscription | null>(null);
+  const startingRef = useRef(false);
   turnsRef.current = turns;
-  const voiceSupported = typeof window !== "undefined" && (canRecord() || getRecognition() !== null);
+  const voiceSupported = typeof window !== "undefined" && (liveTranscriptionSupported() || getRecognition() !== null);
+
+  useEffect(() => () => liveRef.current?.cancel(), []);
 
   const history = () =>
     turnsRef.current.flatMap((t) => (t.a ? [{ q: t.q, a: [t.a.text, ...(t.a.bullets ?? [])].join(" ").slice(0, 1500) }] : []));
@@ -148,30 +148,32 @@ export function AssistantPage() {
 
   const listen = async () => {
     setVoiceError(null);
-    if (recorderRef.current) {
-      recorderRef.current.stop();
+    const live = liveRef.current;
+    if (live) {
+      liveRef.current = null;
+      setListening(false);
+      const heard = await live.stop();
+      setInput("");
+      // Live text when Sarvam streamed it; otherwise upload the recording as before.
+      if (heard.text) ask(heard.text, true);
+      else if (!heard.live && heard.audio) askAudio(heard.audio);
+      else setVoiceError("I couldn't hear that. Try again, or type your question.");
       return;
     }
-    if (!canRecord()) {
+    if (startingRef.current) return;
+    if (!liveTranscriptionSupported()) {
       listenWithBrowser();
       return;
     }
+    startingRef.current = true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream);
-      const chunks: Blob[] = [];
-      rec.ondataavailable = (e) => chunks.push(e.data);
-      rec.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        recorderRef.current = null;
-        setListening(false);
-        if (chunks.length) askAudio(new Blob(chunks, { type: rec.mimeType || "audio/webm" }));
-      };
-      recorderRef.current = rec;
-      rec.start();
+      // "unknown" lets Sarvam detect Tamil, English or a mix of both.
+      liveRef.current = await startLiveTranscription({ languageCode: "unknown", onText: setInput });
       setListening(true);
     } catch {
       setVoiceError("Microphone access is blocked. Allow it in the browser to use voice.");
+    } finally {
+      startingRef.current = false;
     }
   };
 

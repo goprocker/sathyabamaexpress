@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { ServerResponse } from "node:http";
@@ -11,6 +12,7 @@ import {
   MealCommitInputSchema,
   MealSimulationInputSchema,
   ObligationIngestInputSchema,
+  OrderRequestSchema,
   VerifyDeliveryInputSchema,
   type DashboardAttentionItem,
   type DashboardResponse,
@@ -31,6 +33,8 @@ import {
 } from "@household/domain";
 import {
   runActionApprovalAndExecutionWorkflow,
+  runInventoryReorderWorkflow,
+  runVoiceOrderWorkflow,
   runMealPlanningWorkflow,
   runObligationIngestWorkflow,
   runReceiptExtractionWorkflow,
@@ -44,8 +48,14 @@ import { currentUser, ownsHousehold, runWithUser, scopedStore } from "./request-
 import { defaultStateBackend, type StateBackend } from "./state-backend.js";
 import { UserStores } from "./user-stores.js";
 import { registerLifeRoutes } from "./life-routes.js";
+import { registerVoiceStream } from "./voice-stream.js";
+import { startReorderScheduler } from "./reorder-scheduler.js";
+import { registerStoreRoutes } from "./store-routes.js";
+import { startPhoneOrderWatcher } from "./phone-orders.js";
+import { createNotificationService, registerPushRoutes, type NotificationService } from "./notifications.js";
 import {
   isSnapserveLive,
+  listSnapserveCalls,
   resolveSnapserveAgent,
   resolveSnapserveAgentNumber,
   verifySnapserveWebhookSignature,
@@ -166,6 +176,10 @@ export interface ApiAppOptions {
   fileStore?: FileStore | null | undefined;
   /** Replaces Clerk's admin API for the demo login (tests). */
   demoAdmin?: ClerkAdmin | undefined;
+  /** Re-check every household for restock needs on this interval. Off when unset (tests, serverless). */
+  reorderScanIntervalMs?: number | undefined;
+  /** Snapserve ordering agent to watch for phone orders (with its poll interval). Off when unset. */
+  phoneOrders?: { agentId: number; pollMs: number } | undefined;
 }
 
 export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions = {}): FastifyInstance {
@@ -187,10 +201,25 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
   // Each is tagged with its owner so one user never receives another's events (null = shared demo).
   const sseClients = new Map<ServerResponse, string | null>();
 
+  // Set below; events that change stock or orders refresh the household's notifications.
+  let notifications: NotificationService | null = null;
+  const NOTIFY_ON = new Set([
+    "ACTION_APPROVED",
+    "ACTION_REJECTED",
+    "ACTION_RECONCILED",
+    "SNAPSERVE_CALL_PROGRESS",
+    "DELIVERY_RECONCILED",
+    "RECEIPT_CONFIRMED",
+    "MEAL_COMMITTED",
+    "MEAL_CONSUMED",
+    "REORDER_PROPOSED",
+  ]);
+
   const broadcastRealtime = (
     eventType: string,
     payload: Record<string, unknown>
   ) => {
+    if (NOTIFY_ON.has(eventType) && notifications) void notifications.refresh();
     const message = `event: ${eventType}\ndata: ${JSON.stringify({
       type: eventType,
       timestamp: new Date().toISOString(),
@@ -239,8 +268,89 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     return reply.status(status).send({ error: status >= 500 ? "Internal Server Error" : (error as Error).message });
   });
 
+  notifications = createNotificationService(store, {
+    broadcast: broadcastRealtime,
+    log: (msg, detail) => app.log.warn({ detail }, msg),
+  });
+  registerPushRoutes(app, store);
+
+  // Inventory restock: keep one approval-ready vendor call per vendor in step with
+  // stock that is out, low or expiring. Approving it places the Snapserve call.
+  const checkReorders = async (trigger: string) => {
+    try {
+      const result = await runInventoryReorderWorkflow(store, { trigger });
+      if (result.created.length || result.withdrawnIds.length) {
+        broadcastRealtime("REORDER_PROPOSED", {
+          created: result.created.map((a) => a.id),
+          withdrawn: result.withdrawnIds,
+          pending: result.pending.map((a) => a.id),
+        });
+      }
+      // Stock just changed or was re-checked: raise low / out / expiring alerts.
+      await notifications?.refresh();
+      return result;
+    } catch (err) {
+      app.log.warn({ err }, "reorder check failed");
+      return null;
+    }
+  };
+  /** Wraps a handler that changes stock so the restock check runs before the response (and the user's state) is saved. */
+  const afterInventoryChange =
+    (trigger: string, handler: (request: any, reply: any) => Promise<unknown>) =>
+    async (request: any, reply: any) => {
+      const out = await handler(request, reply);
+      if (!reply.sent && reply.statusCode < 400) await checkReorders(trigger);
+      return out;
+    };
+
+  if (options.reorderScanIntervalMs && options.reorderScanIntervalMs > 0) {
+    const stop = startReorderScheduler({
+      intervalMs: options.reorderScanIntervalMs,
+      userStores,
+      check: checkReorders,
+      onError: (err) => app.log.warn({ err }, "scheduled reorder check failed"),
+    });
+    app.addHook("onClose", async () => stop());
+  }
+
+  // Stores and phone ordering.
+  registerStoreRoutes(app, store);
+
+  if (options.phoneOrders) {
+    const stop = startPhoneOrderWatcher({
+      agentId: options.phoneOrders.agentId,
+      intervalMs: options.phoneOrders.pollMs,
+      listCalls: (agentId) => listSnapserveCalls({ agentId, limit: 20 }),
+      demoStore: customStore || db,
+      userStores,
+      placeOrder: async (householdStore, approverUserId, call, order) => {
+        await runVoiceOrderWorkflow(householdStore, {
+          callId: call.id,
+          callerPhone: call.fromNumber ?? "",
+          orderText: order.orderText,
+          preferredStore: order.preferredStore,
+          deliveryNote: order.deliveryNote,
+          approverUserId,
+          stepDelayMs: 0,
+          onBroadcast: broadcastRealtime,
+        });
+      },
+      onLog: (message, detail) => app.log.warn(detail ?? {}, message),
+    });
+    app.addHook("onClose", async () => stop());
+  }
+
   // LIVORA AI modules: life intelligence, mobility, circular, notifications.
-  const life = registerLifeRoutes(app, store);
+  const life = registerLifeRoutes(app, store, {
+    afterInventoryChange: (trigger) => checkReorders(trigger),
+    // Opening the notification centre re-checks stock (expiry is time-based), which also refreshes notifications.
+    householdNotifications: notifications && {
+      refresh: () => checkReorders("Notifications opened"),
+      feed: notifications.feed,
+      markRead: notifications.markRead,
+    },
+  });
+  registerVoiceStream(app, verifySession);
 
   // Setup: family, documents, vehicles, bills and vendors. Uploaded files only exist for signed-in users.
   const fileStore = options.fileStore !== undefined ? options.fileStore : verifySession ? defaultFileStore() : null;
@@ -391,6 +501,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
   app.get("/api/dashboard", async (request) => {
     const query = (request.query as { householdId?: string }) || {};
     const householdId = query.householdId || "hh_demo_001";
+    await checkReorders("Dashboard opened");
 
     const inv = listInventory(store, householdId);
     const { forecasts, obligations } = runForecastEngine(store, householdId);
@@ -647,7 +758,8 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     };
   };
 
-  app.post("/api/receipts/extract", handleReceiptExtract);
+  // Receipts arrive as base64 JSON (a PDF cannot be downscaled in the browser), so allow more than the 1 MiB default.
+  app.post("/api/receipts/extract", { bodyLimit: 15 * 1024 * 1024 }, handleReceiptExtract);
   app.post("/api/receipts/upload", handleReceiptExtract);
 
   const handleReceiptConfirm = async (request: any) => {
@@ -706,9 +818,10 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     };
   };
 
-  app.post("/api/receipts/:id/confirm", handleReceiptConfirm);
-  app.post("/api/receipts/confirm", handleReceiptConfirm);
-  app.post("/api/inventory/purchases", handleReceiptConfirm);
+  const confirmThenCheck = afterInventoryChange("Groceries added", handleReceiptConfirm);
+  app.post("/api/receipts/:id/confirm", confirmThenCheck);
+  app.post("/api/receipts/confirm", confirmThenCheck);
+  app.post("/api/inventory/purchases", confirmThenCheck);
 
   // ==========================================================================
   // 5. Recipes, Meal Simulation & Meal Commit Endpoints
@@ -792,7 +905,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     };
   });
 
-  app.post("/api/meals/:id/consume", async (request, reply) => {
+  app.post("/api/meals/:id/consume", afterInventoryChange("Meal cooked", async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = (request.body as { householdId?: string }) || {};
     const householdId = body.householdId || "hh_demo_001";
@@ -809,7 +922,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
         error: err instanceof Error ? err.message : "Failed to consume meal",
       });
     }
-  });
+  }));
 
   // ==========================================================================
   // 6. Ripple Graph, Counterfactual Simulation & "Why?" Evidence Endpoints
@@ -1017,6 +1130,14 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
       },
       vendor: a.targetVendor?.name || "Kaveri Fresh Mart",
       estimatedCost: `₹${a.estimatedTotalCostInr}`,
+      origin: a.origin ?? null,
+      // One row per item, so a multi-item restock shows why each item is on it.
+      evidenceLines: (a.whyEvidence ?? []).map((e: any) => ({
+        name: e.resourceName ?? e.targetLabel ?? "",
+        headline: e.headline,
+        available: e.onHandDisplay,
+        order: e.deficitDisplay,
+      })),
       execution: a.externalCallStatus
         ? {
             state: snapserveStateMap[a.externalCallStatus] || "Confirmed",
@@ -1032,10 +1153,52 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     };
   };
 
+  // Order from the app in plain words ("2 kg rice; 1 litre milk"): the same path as a
+  // phone order. Asking for it here is the approval, so each store is called straight away.
+  app.post("/api/orders", async (request, reply) => {
+    const body = OrderRequestSchema.parse(request.body ?? {});
+    const result = await runVoiceOrderWorkflow(store, {
+      callId: `app_${crypto.randomUUID().slice(0, 8)}`,
+      callerPhone: "app",
+      orderText: body.items,
+      preferredStore: body.store ?? null,
+      deliveryNote: body.delivery ?? null,
+      approverUserId: currentUser()?.userId ?? "usr_sai_001",
+      stepDelayMs: 0,
+      onBroadcast: broadcastRealtime,
+    });
+    if (result.actions.length === 0) {
+      return reply.code(422).send({
+        error: result.unassigned.length
+          ? `No store sells: ${result.unassigned.join(", ")}. Add a store first.`
+          : "I couldn't understand the items. Try \"2 kg rice; 1 litre milk\".",
+      });
+    }
+    return {
+      actions: result.actions.map(enrichActionWithFrontendShape),
+      unassigned: result.unassigned,
+    };
+  });
+
+  // Manual / cron trigger for the restock check (e.g. a Vercel cron, where no timer runs).
+  app.post("/api/reorders/scan", async () => {
+    const result = await checkReorders("Manual inventory check");
+    if (!result) return { ok: false, created: [], pending: [], withdrawn: [], unassigned: [] };
+    return {
+      ok: true,
+      created: result.created.map(enrichActionWithFrontendShape),
+      pending: result.pending.map(enrichActionWithFrontendShape),
+      withdrawn: result.withdrawnIds,
+      unassigned: result.unassigned,
+    };
+  });
+
   app.get("/api/actions", async (request) => {
     const query =
       (request.query as { householdId?: string; status?: string }) || {};
     const householdId = query.householdId || "hh_demo_001";
+    // Expiry is time-based, so opening Actions re-checks stock before listing.
+    await checkReorders("Actions opened");
     const state = store.getState();
     let actions = state.actions.filter((a) => a.householdId === householdId);
 
@@ -1066,7 +1229,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     return { expectations };
   });
 
-  app.post("/api/verification/reconcile-delivery", async (request) => {
+  app.post("/api/verification/reconcile-delivery", afterInventoryChange("Delivery checked", async (request) => {
     const body = (request.body as Record<string, unknown>) || {};
     const input = VerifyDeliveryInputSchema.parse(body);
     const result = verifyPhysicalDelivery(store, input);
@@ -1080,7 +1243,10 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
       ok: true,
       ...result,
     };
-  });
+  }));
+
+  /** Approvals being executed in this process, so a double tap cannot start a second call. */
+  const actionsInFlight = new Set<string>();
 
   const handleApproveAndExecuteAction = async (request: any, reply: any) => {
     const { id } = request.params as { id: string };
@@ -1102,6 +1268,29 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     }
 
     const targetActionId = existing.id;
+    // Bind the approval token to the signed-in user, not whatever the client sends.
+    const approverId = currentUser()?.userId ?? body.userId ?? "usr_sai_001";
+
+    // Each approval places at most one call: repeat or late requests (a double
+    // tap, the UI's follow-up /complete) report the current state instead.
+    // "APPROVED" without approvedAt comes from deferCompletion (no token, no call yet).
+    const claimKey = `${currentUser()?.userId ?? "demo"}:${targetActionId}`;
+    const executable =
+      (existing.status === "PENDING_APPROVAL" || (existing.status === "APPROVED" && !existing.approvedAt)) &&
+      !actionsInFlight.has(claimKey);
+    if (!executable) {
+      if (existing.status === "REJECTED") {
+        return reply.status(409).send({ error: "This action was rejected.", action: enrichActionWithFrontendShape(existing) });
+      }
+      return {
+        actionId: targetActionId,
+        status: existing.status,
+        alreadyProcessed: true,
+        live: isSnapserveLive(),
+        action: enrichActionWithFrontendShape(existing),
+        steps: [],
+      };
+    }
 
     if (body.deferCompletion) {
       const now = new Date();
@@ -1132,13 +1321,16 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
       // UI follows progress over SSE (SNAPSERVE_CALL_PROGRESS) instead of a
       // canned step timeline.
       const liveCall = isSnapserveLive();
+      actionsInFlight.add(claimKey);
       void runActionApprovalAndExecutionWorkflow(store, {
         actionId: targetActionId,
-        userId: body.userId || "usr_sai_001",
+        userId: approverId,
         idempotencyKey: body.idempotencyKey,
         stepDelayMs: body.stepDelayMs ?? (liveCall ? 0 : 900),
         onBroadcast: broadcastRealtime,
-      });
+      })
+        .catch((err) => app.log.warn({ err, actionId: targetActionId }, "vendor call workflow failed"))
+        .finally(() => actionsInFlight.delete(claimKey));
 
       return {
         actionId: targetActionId,
@@ -1165,13 +1357,14 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
       };
     }
 
+    actionsInFlight.add(claimKey);
     const result = await runActionApprovalAndExecutionWorkflow(store, {
       actionId: targetActionId,
-      userId: body.userId || "usr_sai_001",
+      userId: approverId,
       idempotencyKey: body.idempotencyKey,
       stepDelayMs: body.stepDelayMs ?? 150,
       onBroadcast: broadcastRealtime,
-    });
+    }).finally(() => actionsInFlight.delete(claimKey));
 
     return {
       ...result,

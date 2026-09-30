@@ -11,7 +11,15 @@ import {
   type TransportMode,
   type WardrobeCategory,
 } from "@household/life";
-import type { AssistantAction, CartItem } from "@household/contracts";
+import type {
+  AssistantAction,
+  CartItem,
+  OrderRequest,
+  OrderingSetup,
+  Vendor,
+  StoreInput,
+  StoreUpdate,
+} from "@household/contracts";
 import * as seed from "@/mocks/data";
 import { API_BASE } from "./api";
 import { authEnabled, authHeaders } from "./auth";
@@ -374,3 +382,36 @@ export const getMembers = async () => {
   }
   return seed.familyMembers;
 };
+
+// ── Stores & phone ordering ─────────────────────────────────────────────────
+
+/** Like `request`, but a missing server is an error the screen can show. */
+async function requireApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const out = await request<T>(path, init);
+  if (out === undefined) throw new Error("Can't reach the server right now.");
+  return out;
+}
+
+export const getVendors = async () => (await requireApi<{ vendors: Vendor[] }>("/vendors")).vendors;
+
+export const addVendor = async (input: StoreInput) =>
+  (await requireApi<{ vendor: Vendor }>("/vendors", { method: "POST", body: JSON.stringify(input) })).vendor;
+
+export const updateVendor = async (id: string, patch: StoreUpdate) =>
+  (await requireApi<{ vendor: Vendor }>(`/vendors/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) }))
+    .vendor;
+
+export const removeVendor = (id: string) =>
+  requireApi<{ ok: true }>(`/vendors/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+export const getOrdering = () => requireApi<OrderingSetup>("/ordering");
+
+export const setOrderingPhone = (phone: string) =>
+  requireApi<{ ownerPhone: string }>("/ordering/phone", { method: "PUT", body: JSON.stringify({ phone }) });
+
+/** Orders in plain words; the server calls each store straight away. */
+export const placeOrder = (input: OrderRequest) =>
+  requireApi<{ actions: Array<{ id: string; title: string; quantity: string; vendor: string; status: string }>; unassigned: string[] }>(
+    "/orders",
+    { method: "POST", body: JSON.stringify(input) },
+  );

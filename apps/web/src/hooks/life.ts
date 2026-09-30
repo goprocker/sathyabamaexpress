@@ -1,6 +1,8 @@
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ListingType, ModuleId, TransportMode, WardrobeCategory } from "@household/life";
+import { useEffect } from "react";
 import * as life from "@/lib/lifeApi";
+import { subscribeToHouseholdEvents } from "@/lib/api";
 import { invalidateAllHouseholdQueries } from "@/hooks/queries";
 
 const K = {
@@ -19,7 +21,28 @@ const K = {
 
 export const useOverview = () => useQuery({ queryKey: K.overview, queryFn: life.getOverview });
 export const useSummary = () => useQuery({ queryKey: K.summary, queryFn: life.getSummary });
-export const useNotifications = () => useQuery({ queryKey: K.notifications, queryFn: life.getNotifications });
+// Refreshed live (SSE / push, see useLiveNotifications) and every minute as a fallback.
+export const useNotifications = () =>
+  useQuery({ queryKey: K.notifications, queryFn: life.getNotifications, refetchInterval: 60_000 });
+
+/** Keeps the notification list current: server events and pushes arriving while the app is open. */
+export function useLiveNotifications() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const refresh = () => void qc.invalidateQueries({ queryKey: K.notifications });
+    const unsubscribe = subscribeToHouseholdEvents((type) => {
+      if (type === "NOTIFICATIONS_UPDATED") refresh();
+    });
+    const onWorkerMessage = (e: MessageEvent<{ type?: string }>) => {
+      if (e.data?.type === "PUSH_RECEIVED") refresh();
+    };
+    navigator.serviceWorker?.addEventListener("message", onWorkerMessage);
+    return () => {
+      unsubscribe();
+      navigator.serviceWorker?.removeEventListener("message", onWorkerMessage);
+    };
+  }, [qc]);
+}
 export const useMobility = () => useQuery({ queryKey: K.mobility, queryFn: life.getMobility });
 export const useCircular = () => useQuery({ queryKey: K.circular, queryFn: life.getCircular });
 export const useScopes = () => useQuery({ queryKey: K.scopes, queryFn: life.getScopes });
@@ -178,3 +201,33 @@ export function usePrepareRecipe() {
     onSuccess: () => invalidateAllHouseholdQueries(qc),
   });
 }
+
+// ── Stores & phone ordering ─────────────────────────────────────────────────
+
+const storesKey = ["kitchen", "stores"] as const;
+const orderingKey = ["kitchen", "ordering"] as const;
+
+export const useVendors = () => useQuery({ queryKey: storesKey, queryFn: life.getVendors });
+export const useOrdering = () => useQuery({ queryKey: orderingKey, queryFn: life.getOrdering });
+
+function useStoreMutation<V, R>(fn: (v: V) => Promise<R>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: storesKey });
+      void qc.invalidateQueries({ queryKey: orderingKey });
+    },
+  });
+}
+
+export const useAddVendor = () => useStoreMutation(life.addVendor);
+export const useUpdateVendor = () =>
+  useStoreMutation((v: { id: string; patch: Parameters<typeof life.updateVendor>[1] }) => life.updateVendor(v.id, v.patch));
+export const useRemoveVendor = () => useStoreMutation(life.removeVendor);
+export const useSetOrderingPhone = () => useStoreMutation(life.setOrderingPhone);
+
+export const usePlaceOrder = () => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: life.placeOrder, onSuccess: () => invalidateAllHouseholdQueries(qc) });
+};

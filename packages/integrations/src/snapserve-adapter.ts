@@ -72,6 +72,8 @@ export interface SnapserveOutboundCallParams {
   callScript: string;
   /** Never dial out: use the simulator even when live calls are configured (the shared demo household). */
   forceSimulated?: boolean;
+  /** Spoken name of the household the order is for. */
+  householdName?: string;
   stepDelayMs?: number;
   onStatusUpdate?: (
     status: SnapserveCallStatus,
@@ -189,6 +191,12 @@ export async function listSnapserveAgents(): Promise<SnapserveAgentSummary[]> {
  * Priority: explicit agentId param → SNAPSERVE_AGENT_ID env → the first
  * agent whose status is "active" on the account (cached for 5 minutes).
  */
+/** The agent that answers the household's ordering line (SNAPSERVE_ORDER_AGENT_ID); it must not place store calls. */
+function isInboundOrderAgent(agentId: number): boolean {
+  const orderAgentId = Number(process.env.SNAPSERVE_ORDER_AGENT_ID || "");
+  return Number.isFinite(orderAgentId) && orderAgentId > 0 && agentId === orderAgentId;
+}
+
 export async function resolveSnapserveAgent(
   explicitAgentId?: number
 ): Promise<SnapserveAgentSummary | null> {
@@ -209,7 +217,7 @@ export async function resolveSnapserveAgent(
 
   try {
     const agents = await listSnapserveAgents();
-    const activeAgents = agents.filter((a) => a.status === "active");
+    const activeAgents = agents.filter((a) => a.status === "active" && !isInboundOrderAgent(a.id));
 
     // Prefer the active agent that OWNS a phone number — i.e. the active one
     // which has a number — so outbound calls show the account's own caller ID
@@ -381,6 +389,100 @@ export async function fetchSnapserveCall(
   callId: string
 ): Promise<SnapserveCallRecord> {
   return snapserveFetch<SnapserveCallRecord>(`/calls/${encodeURIComponent(callId)}`);
+}
+
+// ── Phone ordering: inbound calls and agent setup ──────────────────────────
+
+export interface SnapserveCallListItem {
+  id: string;
+  agentId: number | null;
+  status: string;
+  direction: "inbound" | "outbound" | string;
+  fromNumber: string | null;
+  toNumber: string | null;
+  transcript: string | null;
+  callSummary: string | null;
+  /** Post-call structured extraction (the agent's dispositionSchema). */
+  disposition: Record<string, unknown> | null;
+  createdAt: string | null;
+  endedAt: string | null;
+}
+
+/** Recent calls, newest first. `GET /calls?agentId=&limit=`. */
+export async function listSnapserveCalls(filter: { agentId?: number; limit?: number } = {}): Promise<SnapserveCallListItem[]> {
+  const params = new URLSearchParams();
+  if (filter.agentId) params.set("agentId", String(filter.agentId));
+  params.set("limit", String(filter.limit ?? 20));
+  const rows = await snapserveFetch<Array<SnapserveCallRecord & Record<string, unknown>>>(`/calls?${params}`);
+  return (Array.isArray(rows) ? rows : []).map((c) => {
+    let disposition: Record<string, unknown> | null = null;
+    const raw = c.dispositionResult as unknown;
+    if (raw && typeof raw === "object") disposition = raw as Record<string, unknown>;
+    else if (typeof raw === "string") {
+      try {
+        disposition = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        disposition = null;
+      }
+    }
+    return {
+      id: String(c.id),
+      agentId: typeof c.agentId === "number" ? c.agentId : null,
+      status: String(c.status ?? ""),
+      direction: String(c.direction ?? ""),
+      fromNumber: c.fromNumber ?? null,
+      toNumber: c.toNumber ?? null,
+      transcript: c.transcript ?? null,
+      callSummary: c.callSummary ?? null,
+      disposition,
+      createdAt: typeof c.createdAt === "string" ? c.createdAt : null,
+      endedAt: typeof c.endedAt === "string" ? c.endedAt : null,
+    };
+  });
+}
+
+/** Full agent record (`GET /agents/{id}`). */
+export async function getSnapserveAgent(agentId: number): Promise<Record<string, unknown>> {
+  return snapserveFetch<Record<string, unknown>>(`/agents/${agentId}`);
+}
+
+/** `POST /agents`. Required: name, systemPrompt, asrProvider, llmProvider, ttsProvider, telephonyProvider. */
+export async function createSnapserveAgent(config: Record<string, unknown>): Promise<Record<string, unknown> & { id: number }> {
+  return snapserveFetch<Record<string, unknown> & { id: number }>(`/agents`, {
+    method: "POST",
+    body: JSON.stringify(config),
+  });
+}
+
+/** `PATCH /agents/{id}` with only the fields to change. */
+export async function updateSnapserveAgent(agentId: number, patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return snapserveFetch<Record<string, unknown>>(`/agents/${agentId}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+/**
+ * Points a number at an agent (`PATCH /phone-numbers/{id}/assign`). One agent per
+ * number, for both inbound and outbound. Note: an empty body unassigns it.
+ */
+export async function assignSnapservePhoneNumber(phoneNumberId: number, agentId: number): Promise<{ agentId: number | null }> {
+  const res = await snapserveFetch<Record<string, unknown>>(`/phone-numbers/${phoneNumberId}/assign`, {
+    method: "PATCH",
+    body: JSON.stringify({ agentId }),
+  });
+  return { agentId: typeof res.agentId === "number" ? res.agentId : null };
+}
+
+/** Caller-ID numbers on the account (`GET /phone-numbers`). */
+export async function listSnapservePhoneNumbers(): Promise<Array<{ id: number; number: string; agentId: number | null; status: string }>> {
+  const rows = await snapserveFetch<Array<Record<string, unknown>>>(`/phone-numbers`);
+  return (Array.isArray(rows) ? rows : []).map((r) => ({
+    id: Number(r.id),
+    number: String(r.number ?? ""),
+    agentId: typeof r.agentId === "number" ? r.agentId : null,
+    status: String(r.status ?? ""),
+  }));
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -691,13 +793,17 @@ async function runLiveCall(
     });
   } catch (err) {
     // Stale/invalid agent id (e.g. demo placeholder 101): retry with the
-    // first active agent on the account.
+    // configured outbound agent, else the first active agent — never the
+    // inbound ordering agent, whose prompt takes orders instead of placing them.
     if (
       err instanceof SnapserveApiError &&
       (err.httpStatus === 400 || err.httpStatus === 404)
     ) {
-      const activeAgents = await listSnapserveAgents();
-      const active = activeAgents.find((a) => a.status === "active");
+      const activeAgents = (await listSnapserveAgents()).filter(
+        (a) => a.status === "active" && a.id !== agent?.id && !isInboundOrderAgent(a.id)
+      );
+      const envAgentId = Number(process.env.SNAPSERVE_AGENT_ID || "");
+      const active = activeAgents.find((a) => a.id === envAgentId) ?? activeAgents[0];
       if (active) {
         agent = active;
         activeAgentCache = { agent: active, resolvedAt: Date.now() };
@@ -758,7 +864,7 @@ async function runLiveCall(
       : "UNKNOWN";
 
   // ── Humanize the transcript & outcome ───────────────────────────────────
-  const greeting = `Vanakkam! Calling from Household Assistant for Sai's home. We need ${params.orderSummary} delivered tomorrow morning. Please confirm availability.`;
+  const greeting = `Vanakkam! Calling from Household Assistant for ${params.householdName || "Sai's home"}. We need ${params.orderSummary} delivered tomorrow morning. Please confirm availability.`;
   let transcript = humanizeCallTranscript(record.transcript ?? "", {
     vendorName: params.vendorName,
     orderSummary: params.orderSummary,

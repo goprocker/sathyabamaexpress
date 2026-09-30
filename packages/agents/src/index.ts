@@ -41,6 +41,9 @@ import {
 import { buildVendorCallScript as buildHumanizedCallScript } from "./voice-agent.js";
 import { AgentTraceRecorder } from "@household/tools";
 
+/** Vendors from the demo seed (copied into every new household); their phone numbers are placeholders. */
+const SEEDED_DEMO_VENDOR_IDS = new Set(["vnd_nellai_meats", "vnd_kovai_greens"]);
+
 // ============================================================================
 // 0. Obligation Ingestion Pipeline (documents · bills · appointments ·
 // vehicle service · subscriptions) — TRD §12 events made real.
@@ -707,6 +710,7 @@ export async function runMealPlanningWorkflow(
               householdId,
               sourceEventId: eventId,
               type: "VENDOR_PURCHASE_CALL",
+              origin: "MEAL_SHORTAGE",
               status: "PENDING_APPROVAL",
               title,
               subtitle: `${vendor?.name || "Kaveri Fresh Mart"} · Tomorrow morning delivery`,
@@ -763,9 +767,14 @@ export async function runMealPlanningWorkflow(
   if (proposedActions.length > 0) {
     proposedActions[0].whyEvidence = rippleGraph.explanations;
     store.mutate((draft) => {
-      // Remove older pending purchase actions for the same meal recipe to keep demo clean
+      // Replace older pending meal-shortage purchases; inventory restock proposals are kept.
       draft.actions = draft.actions.filter(
-        (a) => a.status !== "PENDING_APPROVAL" || a.type !== "VENDOR_PURCHASE_CALL"
+        (a) =>
+          a.status !== "PENDING_APPROVAL" ||
+          a.type !== "VENDOR_PURCHASE_CALL" ||
+          a.origin === "INVENTORY_REORDER" ||
+          a.origin === "DELIVERY_SHORTFALL" ||
+          a.origin === "VOICE_ORDER"
       );
       draft.actions.unshift(proposedActions[0]);
     });
@@ -965,14 +974,23 @@ export async function runActionApprovalAndExecutionWorkflow(
   const agentId = vendorAgent?.id ?? accountAgent?.id ?? 101;
   const agentCallerNumber = await resolveSnapserveAgentNumber(agentId);
   const vendorName = vendor?.name || "Kaveri Fresh Mart & Meats";
-  const toNumber = vendor?.phoneE164 || "+919840000000";
+  // The seeded demo vendors carry placeholder numbers; SNAPSERVE_DEMO_VENDOR_PHONE
+  // sends their calls to a phone you own instead of a stranger.
+  const demoVendorPhone = process.env.SNAPSERVE_DEMO_VENDOR_PHONE?.trim();
+  const toNumber =
+    (demoVendorPhone && (!vendor || SEEDED_DEMO_VENDOR_IDS.has(vendor.id)) ? demoVendorPhone : vendor?.phoneE164) ||
+    "+919840000000";
   const orderSummary = existingAction.items
     .map((i) => `${i.orderDisplay} ${i.name}`)
     .join(" and ");
-  const callScript = vendorAgent
+  const householdName =
+    store.getState().households.find((h) => h.id === existingAction.householdId)?.name;
+  // Restock and phone orders carry their own script (household name, delivery time).
+  const ownScript = existingAction.origin === "VOICE_ORDER" || existingAction.origin === "INVENTORY_REORDER";
+  const callScript = vendorAgent || ownScript
     ? existingAction.callScript
     : buildHumanizedCallScript({
-        householdName: "Sai's home",
+        householdName,
         items: existingAction.items.map((i) => ({
           orderDisplay: i.orderDisplay,
           name: i.name,
@@ -1002,6 +1020,7 @@ export async function runActionApprovalAndExecutionWorkflow(
             callScript,
             // The demo household can approve orders, but its calls are always simulated.
             forceSimulated: isDemoHousehold,
+            householdName: householdName?.split(" · ")[0],
             stepDelayMs: params.stepDelayMs,
             onStatusUpdate: updateActionCallStep,
           }),
@@ -1241,3 +1260,6 @@ export async function runActionApprovalAndExecutionWorkflow(
 }
 
 export * from "./voice-agent.js";
+
+export * from "./reorder-workflow.js";
+export * from "./voice-order-workflow.js";

@@ -1,5 +1,6 @@
 // Voice interaction (Design System §19) — a utility, not a chatbot.
-// Connects to Sarvam STT → Intake Agent → Meal & Ripple Engines via /api/voice/transcribe.
+// Sarvam live STT (/api/voice/stream) shows words as they are spoken; the final
+// transcript then goes to Intake Agent → Meal & Ripple Engines via /api/voice/transcribe.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -8,6 +9,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button, StatusPill } from "@/components/ui/primitives";
 import { transcribeVoice, type VoiceTranscriptionResult } from "@/lib/api";
 import { authEnabled } from "@/lib/auth";
+import { startLiveTranscription, type LiveTranscription } from "@/lib/voiceStream";
 import { voiceUtterance } from "@/mocks/data";
 
 type Phase = "idle" | "listening" | "processing" | "result" | "error";
@@ -29,7 +31,9 @@ export function VoicePage() {
   const [error, setError] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
   const [language, setLanguage] = useState<(typeof LANGUAGES)[number]["code"]>("ta-IN");
-  const recorder = useRef<MediaRecorder | null>(null);
+  const [liveText, setLiveText] = useState("");
+  const session = useRef<LiveTranscription | null>(null);
+  const starting = useRef(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoStopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
@@ -38,6 +42,7 @@ export function VoicePage() {
   useEffect(() => () => {
     if (timer.current) clearInterval(timer.current);
     if (autoStopTimer.current) clearTimeout(autoStopTimer.current);
+    session.current?.cancel();
   }, []);
 
   async function runVoicePipeline(input?: { audioBlob?: Blob; text?: string }) {
@@ -77,36 +82,36 @@ export function VoicePage() {
       }, 2000);
       return;
     }
+    if (starting.current || session.current) return;
+    starting.current = true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream);
-      const chunks: Blob[] = [];
-      rec.ondataavailable = (e) => chunks.push(e.data);
-      rec.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        if (timer.current) clearInterval(timer.current);
-        recorder.current = null;
-        const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
-        if (blob.size > 0) void runVoicePipeline({ audioBlob: blob });
-        else {
-          setError("I didn't hear anything. Try again, or type it below.");
-          setPhase("error");
-        }
-      };
-      recorder.current = rec;
-      rec.start();
+      setLiveText("");
+      session.current = await startLiveTranscription({ languageCode: language, onText: setLiveText });
       setSeconds(0);
       timer.current = setInterval(() => setSeconds((s) => s + 1), 1000);
       setPhase("listening");
     } catch {
       setError("Microphone access is blocked. Allow it in your browser, or type it below.");
       setPhase("error");
+    } finally {
+      starting.current = false;
     }
   }
 
-  function stop() {
-    if (recorder.current) {
-      recorder.current.stop();
+  async function stop() {
+    const live = session.current;
+    if (live) {
+      session.current = null;
+      if (timer.current) clearInterval(timer.current);
+      setPhase("processing");
+      const heard = await live.stop();
+      // Live text when Sarvam streamed it; otherwise upload the recording as before.
+      if (heard.text) void runVoicePipeline({ text: heard.text });
+      else if (!heard.live && heard.audio) void runVoicePipeline({ audioBlob: heard.audio });
+      else {
+        setError("I didn't hear anything. Try again, or type it below.");
+        setPhase("error");
+      }
       return;
     }
     if (timer.current) clearInterval(timer.current);
@@ -172,8 +177,10 @@ export function VoicePage() {
         {phase === "listening" && (
           <>
             <p className="eyebrow">Listening</p>
-            <p className="body-text text-text-secondary">Speak naturally…</p>
-            <VoiceButton onClick={stop} label="Stop" active>
+            <p aria-live="polite" className={`body-text min-h-[3lh] ${liveText ? "text-text-primary" : "text-text-secondary"}`}>
+              {liveText || "Speak naturally…"}
+            </p>
+            <VoiceButton onClick={() => void stop()} label="Stop" active>
               <Square size={18} strokeWidth={1.75} />
             </VoiceButton>
             <p className="text-meta tabular-nums">{seconds}s</p>

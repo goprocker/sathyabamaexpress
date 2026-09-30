@@ -17,6 +17,7 @@ import {
   Settings,
   ShoppingCart,
   Sparkles,
+  Store,
   TrendingUp,
   User,
   Users,
@@ -53,6 +54,7 @@ const kitchenPaths = [
   "/forecasts",
   "/actions",
   "/inventory",
+  "/stores",
 ];
 
 /** Top bar and mobile bar destinations. */
@@ -89,6 +91,7 @@ export const navGroups: NavGroup[] = [
       { to: "/ripple", label: "Ripple", hint: "What a change affects", icon: Waypoints },
       { to: "/forecasts", label: "Forecasts", hint: "Shortages ahead", icon: TrendingUp },
       { to: "/actions", label: "Actions", hint: "Approve proposals", icon: ClipboardList },
+      { to: "/stores", label: "Stores", hint: "Shops the agent calls", icon: Store },
     ],
   },
   {

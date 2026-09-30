@@ -9,6 +9,7 @@ import { uploadReceipt, type ReceiptLineReview } from "@/lib/api";
 import { useProfile } from "@/hooks/profile";
 import { authEnabled } from "@/lib/auth";
 import { formatQuantity } from "@/lib/format";
+import { resizeImage } from "@/lib/image";
 import type { StateTransitionItem } from "@/mocks/types";
 
 type Phase = "upload" | "processing" | "review" | "confirming" | "confirmed";
@@ -44,6 +45,14 @@ export function ReceiptPage() {
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.type.startsWith("image/")) {
+      // Phone photos are several MB; a 2000px JPEG stays legible and well under the upload limit.
+      resizeImage(file, 2000).then(
+        (imageBase64) => void processReceiptInput({ imageBase64 }),
+        () => setError("Couldn't read that photo. Try a JPG or PNG."),
+      );
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const result = typeof reader.result === "string" ? reader.result : undefined;

@@ -509,6 +509,8 @@ export const ActionProposalSchema = z.object({
   householdId: z.string(),
   sourceEventId: z.string(),
   type: z.enum(["VENDOR_PURCHASE_CALL", "BILL_REMINDER", "ROUTINE_ADJUSTMENT"]),
+  /** What produced the proposal. Absent on proposals created before this field existed. */
+  origin: z.enum(["MEAL_SHORTAGE", "INVENTORY_REORDER", "DELIVERY_SHORTFALL", "VOICE_ORDER"]).optional(),
   status: z.enum([
     "PENDING_APPROVAL",
     "APPROVED",
@@ -1092,3 +1094,105 @@ export const ImpactFactorsInputSchema = z.object({
 export type ImpactFactorsInput = z.infer<typeof ImpactFactorsInputSchema>;
 
 export * from "./profile.js";
+// ============================================================================
+// Live voice transcription (WebSocket /api/voice/stream)
+// Client sends 16 kHz mono 16-bit PCM as binary frames, then {"type":"stop"}.
+// ============================================================================
+
+export const VoiceStreamClientMessageSchema = z.object({ type: z.literal("stop") });
+export type VoiceStreamClientMessage = z.infer<typeof VoiceStreamClientMessageSchema>;
+
+export const VoiceStreamServerMessageSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("ready") }),
+  z.object({ type: z.literal("partial"), utterance: z.number().int(), text: z.string() }),
+  z.object({ type: z.literal("final"), utterance: z.number().int(), text: z.string(), language: z.string().optional() }),
+  z.object({ type: z.literal("error"), message: z.string() }),
+  z.object({ type: z.literal("end") }),
+]);
+export type VoiceStreamServerMessage = z.infer<typeof VoiceStreamServerMessageSchema>;
+
+// ============================================================================
+// Stores (vendors the household onboards) & phone ordering
+// ============================================================================
+
+/** What a store sells; matches resource categories (singular, lowercase). */
+export const StoreCategorySchema = z.enum(["produce", "dairy", "protein", "grain", "spice", "pantry"]);
+export type StoreCategory = z.infer<typeof StoreCategorySchema>;
+
+/** Indian mobile/landline as typed ("98400 00000", "+91-98400-00000") or E.164. Normalised server-side. */
+export const PhoneInputSchema = z.string().trim().min(8).max(20).regex(/^[+\d][\d\s()-]*$/, "Enter a phone number");
+
+export const StoreInputSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  phone: PhoneInputSchema,
+  categories: z.array(StoreCategorySchema).min(1, "Pick at least one thing this store sells"),
+  isPreferred: z.boolean().default(false),
+});
+export type StoreInput = z.infer<typeof StoreInputSchema>;
+
+export const StoreUpdateSchema = StoreInputSchema.partial();
+export type StoreUpdate = z.infer<typeof StoreUpdateSchema>;
+
+export const OrderingPhoneInputSchema = z.object({ phone: PhoneInputSchema });
+export type OrderingPhoneInput = z.infer<typeof OrderingPhoneInputSchema>;
+
+/** GET /api/ordering: how phone ordering is set up for this household. */
+export const OrderingSetupSchema = z.object({
+  /** The number the household calls to order (the Snapserve ordering agent's line). */
+  agentNumber: z.string().nullable(),
+  /** The household's registered phone; only calls from it can place orders. */
+  ownerPhone: z.string().nullable(),
+  live: z.boolean(),
+  storeCount: z.number().int(),
+});
+export type OrderingSetup = z.infer<typeof OrderingSetupSchema>;
+
+/** POST /api/orders: order in plain words from the app (same path as a phone order). */
+export const OrderRequestSchema = z.object({
+  items: z.string().trim().min(2).max(500),
+  store: z.string().trim().max(80).optional(),
+  delivery: z.string().trim().max(80).optional(),
+});
+export type OrderRequest = z.infer<typeof OrderRequestSchema>;
+
+// ============================================================================
+// Household notifications (inventory & transactions) and Web Push
+// ============================================================================
+
+export const HouseholdNotificationKindSchema = z.enum([
+  "INVENTORY_OUT",
+  "INVENTORY_LOW",
+  "INVENTORY_EXPIRING",
+  "RESTOCK_READY",
+  "ORDER_PLACED",
+  "ORDER_CONFIRMED",
+  "ORDER_FAILED",
+  "PURCHASE_RECORDED",
+]);
+export type HouseholdNotificationKind = z.infer<typeof HouseholdNotificationKindSchema>;
+
+export const HouseholdNotificationSchema = z.object({
+  id: z.string(),
+  householdId: z.string(),
+  kind: HouseholdNotificationKindSchema,
+  category: z.enum(["inventory", "transaction", "approval"]),
+  title: z.string(),
+  body: z.string(),
+  /** In-app route to open. */
+  href: z.string(),
+  /** One live notification per key; a condition that clears and comes back notifies again. */
+  dedupeKey: z.string(),
+  createdAt: z.string(),
+  readAt: z.string().nullable().optional(),
+  /** Set when the condition behind it has cleared (e.g. milk restocked). */
+  resolvedAt: z.string().nullable().optional(),
+});
+export type HouseholdNotification = z.infer<typeof HouseholdNotificationSchema>;
+
+/** A browser push subscription (PushSubscription.toJSON()). */
+export const PushSubscriptionInputSchema = z.object({
+  endpoint: z.string().url().max(1000),
+  expirationTime: z.number().nullable().optional(),
+  keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(100) }),
+});
+export type PushSubscriptionInput = z.infer<typeof PushSubscriptionInputSchema>;
