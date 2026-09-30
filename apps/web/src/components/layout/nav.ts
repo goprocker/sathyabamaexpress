@@ -1,6 +1,7 @@
 import {
   Activity,
   BellRing,
+  BookOpen,
   CalendarDays,
   ChefHat,
   ClipboardList,
@@ -114,6 +115,7 @@ export const navGroups: NavGroup[] = [
       { to: "/settings", label: "Settings", hint: "Notifications and data", icon: Settings },
       { to: "/onboarding", label: "Setup", hint: "Guided setup", icon: Rocket },
       { to: "/landing", label: "The story", hint: "How it works", icon: BellRing },
+      { to: "/docs", label: "Documentation", hint: "Project dossier", icon: BookOpen },
     ],
   },
 ];
