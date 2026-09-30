@@ -7,6 +7,7 @@ import type {
   FuelFillInput,
   ServiceRecordInput,
   SetupStepId,
+  SubscriptionInput,
   TripInput,
   VehicleInput,
   VendorInput,
@@ -142,3 +143,9 @@ type VendorBody = Omit<VendorInput, "phone"> & { phone: string };
 export const addVendor = (input: VendorBody, key: string) => send<{ ok: true; id: string }>("/vendors", "POST", json(input), key);
 export const updateVendor = (id: string, input: VendorBody) => send<{ ok: true }>(`/vendors/${id}`, "PUT", json(input));
 export const removeVendor = (id: string) => send<{ ok: true }>(`/vendors/${id}`, "DELETE");
+
+// Subscriptions
+export const addSubscription = (input: SubscriptionInput, key: string) => send<{ ok: true; id: string }>("/subscriptions", "POST", json(input), key);
+export const updateSubscription = (id: string, input: SubscriptionInput) => send<{ ok: true }>(`/subscriptions/${id}`, "PUT", json(input));
+export const markSubscriptionPaid = (id: string) => send<{ ok: true; nextDueOn: string }>(`/subscriptions/${id}/paid`, "POST", json({}));
+export const removeSubscription = (id: string) => send<{ ok: true }>(`/subscriptions/${id}`, "DELETE");

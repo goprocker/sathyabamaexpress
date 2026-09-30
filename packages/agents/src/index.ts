@@ -954,7 +954,8 @@ export async function runActionApprovalAndExecutionWorkflow(
   // places the call on the household's behalf.
   const vendor = existingAction.targetVendor;
   // Never place a live call to a made-up number: without a vendor on file there is nobody to call.
-  if (!vendor?.phoneE164 && isSnapserveLive()) {
+  const isDemoHousehold = store.getState().isDemo === true;
+  if (!vendor?.phoneE164 && isSnapserveLive() && !isDemoHousehold) {
     throw new Error("Add a vendor with a phone number in Setup before sending this order.");
   }
   const vendorAgent = vendor?.snapserveAgentId
@@ -999,6 +1000,8 @@ export async function runActionApprovalAndExecutionWorkflow(
             vendorName,
             orderSummary,
             callScript,
+            // The demo household can approve orders, but its calls are always simulated.
+            forceSimulated: isDemoHousehold,
             stepDelayMs: params.stepDelayMs,
             onStatusUpdate: updateActionCallStep,
           }),

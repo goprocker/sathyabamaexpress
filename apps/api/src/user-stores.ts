@@ -1,5 +1,6 @@
 // One household store per signed-in user, each starting empty.
 import { buildFreshUserState, HouseholdStore, type CanonicalStateData } from "@household/db";
+import { demoState } from "./demo-state.js";
 import type { StateBackend } from "./state-backend.js";
 
 export class UserStores {
@@ -26,13 +27,21 @@ export class UserStores {
   private async open(userId: string): Promise<HouseholdStore> {
     const loaded = await this.backend.load(userId);
     const store = new HouseholdStore(null, loaded ?? undefined, {
-      seed: buildFreshUserState,
+      // A demo household resets to the full demo; everyone else resets to empty.
+      seed: loaded?.isDemo ? demoState : buildFreshUserState,
       onPersist: (state) => this.persist(userId, state),
     });
     // A brand-new user is written straight away so the account exists before first use.
     if (!loaded) this.persist(userId, store.getState());
     if (this.backend.cacheable) this.cache.set(userId, store);
     return store;
+  }
+
+  /** Puts the demo account back to the full sample household, dropping anything a previous visitor changed. */
+  async seedDemo(userId: string): Promise<void> {
+    await this.flush(userId);
+    this.cache.delete(userId);
+    await this.backend.save(userId, demoState());
   }
 
   /** The user (and their store) that placed the vendor call with this id, if any. */

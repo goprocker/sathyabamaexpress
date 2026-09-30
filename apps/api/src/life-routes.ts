@@ -17,7 +17,7 @@ import {
   WardrobeAddInputSchema,
 } from "@household/contracts";
 import type { HouseholdStore } from "@household/db";
-import { currentUser } from "./request-context.js";
+import { currentUser, ownsHousehold } from "./request-context.js";
 import { emptyHouseholdProfile } from "@household/contracts";
 import { consumeResources, listInventory, runForecastEngine, type ConsumeLine } from "@household/domain";
 import { answerWithHouseholdContext, transcribeAudioWithSarvam, type RequestedCartAction } from "@household/integrations";
@@ -85,7 +85,7 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
 
   // ── Cart (canonical state) ───────────────────────────────────────────
   // A signed-in household starts with an empty cart; the open demo starts from the sample.
-  const initialCart = (): LifeCartItem[] => (currentUser() ? [] : smartCart.map((c) => ({ ...c })));
+  const initialCart = (): LifeCartItem[] => (ownsHousehold() ? [] : smartCart.map((c) => ({ ...c })));
   const readCart = (): LifeCartItem[] => store.getState().cart ?? initialCart();
 
   const changeCart = (
@@ -196,7 +196,7 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
     });
 
     // A signed-in household starts empty: no sample cart, meal plan, trip or notices.
-    const ownData = currentUser() !== undefined;
+    const ownData = ownsHousehold();
     const profile = store.getState().profile ?? emptyHouseholdProfile();
     const members = store.getState().members;
     const vendors = store.getState().vendors;
@@ -277,8 +277,8 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore) 
     changeCart("CART_REMOVE", (cart) => setCartQuantity(cart, id, 0));
     return { ok: true };
   });
-  app.get("/api/budget", async () => ({ budget: currentUser() ? emptyBudget : budgetData }));
-  app.get("/api/meal-plan", async () => ({ days: currentUser() ? [] : weeklyMealPlan }));
+  app.get("/api/budget", async () => ({ budget: ownsHousehold() ? emptyBudget : budgetData }));
+  app.get("/api/meal-plan", async () => ({ days: ownsHousehold() ? [] : weeklyMealPlan }));
 
   // ── Life intelligence ─────────────────────────────────────────────────
   app.get("/api/life/overview", async (request) => svc(request).overview());

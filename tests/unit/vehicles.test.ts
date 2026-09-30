@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  nextBillingDate,
   maskDocumentNumber,
   normalizeIndianPhone,
   obligationTiming,
@@ -297,5 +298,16 @@ describe("What the assistant may know", () => {
     const text = JSON.stringify(context);
     for (const secret of ["9012", "9876543210", "8123456789", "Temple Street"]) assert.ok(!text.includes(secret), `${secret} must not be included`);
     assert.ok(text.includes("Asha") && text.includes("Aavin") && text.includes("2030-01-01"));
+  });
+});
+
+describe("Billing dates", () => {
+  it("moves a subscription forward one cycle and keeps month ends sensible", () => {
+    assert.equal(nextBillingDate("2026-10-15", "monthly"), "2026-11-15");
+    assert.equal(nextBillingDate("2026-01-31", "monthly"), "2026-02-28");
+    assert.equal(nextBillingDate("2028-01-31", "monthly"), "2028-02-29");
+    assert.equal(nextBillingDate("2026-12-05", "monthly"), "2027-01-05");
+    assert.equal(nextBillingDate("2026-10-15", "quarterly"), "2027-01-15");
+    assert.equal(nextBillingDate("2026-10-15", "yearly"), "2027-10-15");
   });
 });

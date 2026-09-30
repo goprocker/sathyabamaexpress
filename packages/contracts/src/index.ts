@@ -454,6 +454,8 @@ export const ObligationSchema = z.object({
   assignedMemberName: z.string().optional(),
   conflictDescription: z.string().optional(),
   sourceEventId: z.string().optional(),
+  /** Where to pay it (a subscription's own billing page). Opens in the browser. */
+  payUrl: z.string().optional(),
 });
 export type Obligation = z.infer<typeof ObligationSchema>;
 

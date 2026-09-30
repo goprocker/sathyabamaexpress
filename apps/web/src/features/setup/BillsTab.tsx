@@ -6,6 +6,7 @@ import { useSetupAction } from "@/hooks/profile";
 import type { PreparedFile } from "@/lib/image";
 import * as api from "@/lib/profileApi";
 import type { ProfileView } from "@/lib/profileApi";
+import { SubscriptionsSection } from "./SubscriptionsSection";
 import { CheckField, FileField, FormButtons, FormCard, Notice, TextField, errorMessage, grid2, num, validate } from "./kit";
 
 type Bill = ProfileView["bills"][number];
@@ -142,9 +143,10 @@ function BillRow({ bill }: { bill: Bill }) {
 export function BillsTab({ profile }: { profile: ProfileView }) {
   const [adding, setAdding] = useState(false);
   return (
-    <div className="space-y-5">
+    <div className="space-y-10">
+      <div className="space-y-5">
       <p className="text-[15px] text-text-secondary">
-        Add your electricity bill and we remind you before it is due. Petrol and diesel bills go with each vehicle, under Vehicles, where they also work out your real mileage.
+        Add your electricity bill and we remind you before it is due. Petrol and diesel bills go with each vehicle, under Vehicles, where they also work out your real mileage. Subscriptions are further down.
       </p>
 
       {adding ? (
@@ -170,6 +172,9 @@ export function BillsTab({ profile }: { profile: ProfileView }) {
           ))}
         </ul>
       )}
+      </div>
+
+      <SubscriptionsSection profile={profile} />
     </div>
   );
 }

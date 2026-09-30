@@ -14,7 +14,7 @@ import {
 import { addDays, daysBetween } from "./engine.js";
 
 export type ReminderSeverity = "info" | "warning" | "urgent";
-export type ReminderKind = "fuel" | "service" | "tyre" | "mileage" | "document" | "bill";
+export type ReminderKind = "fuel" | "service" | "tyre" | "mileage" | "document" | "bill" | "subscription";
 
 export interface Reminder {
   id: string;

@@ -337,6 +337,8 @@ export interface Obligation {
   recurrence?: "monthly" | "quarterly" | "yearly";
   status: ObligationStatus;
   linkedActionId?: string;
+  /** Where to pay it: opens the service's own billing page in the browser. */
+  payUrl?: string;
 }
 
 export interface ObligationsSummary {

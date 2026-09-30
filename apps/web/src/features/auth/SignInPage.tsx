@@ -1,5 +1,6 @@
 import { SignIn } from "@clerk/react";
 import { Wordmark } from "@/components/layout/TopNav";
+import { DemoLogin } from "./DemoLogin";
 
 export function SignInPage() {
   return (
@@ -10,6 +11,7 @@ export function SignInPage() {
         <p className="mt-2 text-[15px] text-text-secondary">Your household, timeline and kitchen, private to you.</p>
       </div>
       <SignIn routing="hash" withSignUp />
+      <DemoLogin />
     </main>
   );
 }

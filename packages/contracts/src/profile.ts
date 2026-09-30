@@ -315,6 +315,84 @@ export const VendorInputSchema = z.object({
 });
 export type VendorInput = z.infer<typeof VendorInputSchema>;
 
+// ── Subscriptions (OTT, music and other recurring services) ────────────────
+
+export const SUBSCRIPTION_PROVIDERS = ["netflix", "prime_video", "hotstar", "spotify", "youtube_premium", "sonyliv", "zee5", "apple_tv", "other"] as const;
+export const SubscriptionProviderSchema = z.enum(SUBSCRIPTION_PROVIDERS);
+export type SubscriptionProvider = z.infer<typeof SubscriptionProviderSchema>;
+
+/** Where each service takes payment. "Pay" opens this page in the browser; the payment itself happens on the provider's site. */
+export const SUBSCRIPTION_CATALOG: Record<SubscriptionProvider, { label: string; payUrl: string }> = {
+  netflix: { label: "Netflix", payUrl: "https://www.netflix.com/youraccount" },
+  prime_video: { label: "Amazon Prime", payUrl: "https://www.amazon.in/gp/primecentral" },
+  hotstar: { label: "JioHotstar", payUrl: "https://www.hotstar.com/in/subscribe" },
+  spotify: { label: "Spotify", payUrl: "https://www.spotify.com/in-en/account/subscription/" },
+  youtube_premium: { label: "YouTube Premium", payUrl: "https://www.youtube.com/paid_memberships" },
+  sonyliv: { label: "SonyLIV", payUrl: "https://www.sonyliv.com/subscribe" },
+  zee5: { label: "ZEE5", payUrl: "https://www.zee5.com/myaccount/subscription" },
+  apple_tv: { label: "Apple TV+", payUrl: "https://apps.apple.com/account/subscriptions" },
+  other: { label: "Other service", payUrl: "" },
+};
+
+export const BILLING_CYCLES = ["monthly", "quarterly", "yearly"] as const;
+export const BillingCycleSchema = z.enum(BILLING_CYCLES);
+export type BillingCycle = z.infer<typeof BillingCycleSchema>;
+export const CYCLE_MONTHS: Record<BillingCycle, number> = { monthly: 1, quarterly: 3, yearly: 12 };
+
+/** Only https links are accepted, so a saved link can never be a script or an unencrypted page. */
+export const SecureUrlSchema = z
+  .string()
+  .trim()
+  .url("Enter a full link starting with https://")
+  .refine((u) => u.startsWith("https://"), "The link must start with https://");
+
+export const SubscriptionInputSchema = z
+  .object({
+    provider: SubscriptionProviderSchema,
+    /** Required for "other"; catalogue services already have a name. */
+    name: optionalText(60),
+    plan: optionalText(60),
+    amountInr: z.number().positive().max(1_000_000),
+    cycle: BillingCycleSchema,
+    nextDueOn: IsoDateSchema,
+    /** Leave empty to use the service's own page. Required for "other". */
+    payUrl: z
+      .string()
+      .trim()
+      .transform((v) => (v === "" ? undefined : v))
+      .pipe(SecureUrlSchema.optional())
+      .optional(),
+  })
+  .refine((s) => s.provider !== "other" || Boolean(s.name), { message: "Give the service a name", path: ["name"] })
+  .refine((s) => s.provider !== "other" || Boolean(s.payUrl), { message: "Add the link where you pay", path: ["payUrl"] });
+export type SubscriptionInput = z.infer<typeof SubscriptionInputSchema>;
+
+export interface SubscriptionRecord {
+  id: string;
+  provider: SubscriptionProvider;
+  /** What to show: the catalogue name, or the custom name for "other". */
+  name: string;
+  plan?: string | undefined;
+  amountInr: number;
+  cycle: BillingCycle;
+  nextDueOn: string;
+  /** Where "Pay" goes. Always https. */
+  payUrl: string;
+  lastPaidOn?: string | undefined;
+  createdAt: string;
+}
+
+/** The date after `iso` once one billing cycle has passed. Month ends are kept: 31 Jan + 1 month is 28 Feb. */
+export function nextBillingDate(iso: string, cycle: BillingCycle): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + CYCLE_MONTHS[cycle]);
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return d.toISOString().slice(0, 10);
+}
+
 // ── The profile as stored with the household ───────────────────────────────
 
 export const SETUP_STEP_IDS = ["family", "documents", "vehicles", "bills", "vendors"] as const;
@@ -331,10 +409,12 @@ export interface HouseholdProfile {
   trips: TripRecord[];
   serviceRecords: ServiceRecord[];
   electricityBills: ElectricityBillRecord[];
+  /** Absent on households saved before subscriptions existed; treat as empty. */
+  subscriptions?: SubscriptionRecord[] | undefined;
 }
 
 export function emptyHouseholdProfile(): HouseholdProfile {
-  return { skippedSteps: [], documents: [], vehicles: [], fuelFills: [], trips: [], serviceRecords: [], electricityBills: [] };
+  return { skippedSteps: [], documents: [], vehicles: [], fuelFills: [], trips: [], serviceRecords: [], electricityBills: [], subscriptions: [] };
 }
 
 // ── Due dates ──────────────────────────────────────────────────────────────

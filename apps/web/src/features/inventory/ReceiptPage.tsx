@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button, StatusPill } from "@/components/ui/primitives";
 import { useConfirmReceipt } from "@/hooks/queries";
 import { uploadReceipt, type ReceiptLineReview } from "@/lib/api";
+import { useProfile } from "@/hooks/profile";
 import { authEnabled } from "@/lib/auth";
 import { formatQuantity } from "@/lib/format";
 import type { StateTransitionItem } from "@/mocks/types";
@@ -20,6 +21,8 @@ export function ReceiptPage() {
   const [transitions, setTransitions] = useState<StateTransitionItem[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The sample receipt is for the open demo and the demo account; a real household scans its own bills.
+  const isDemo = useProfile({ enabled: authEnabled }).data?.isDemo === true;
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const confirm = useConfirmReceipt();
@@ -113,7 +116,7 @@ export function ReceiptPage() {
             className="hidden"
             onChange={handleFileChange}
           />
-          {!authEnabled && (
+          {(!authEnabled || isDemo) && (
             <div className="flex items-center justify-between rounded-card border border-border bg-surface px-4 py-3">
               <div className="flex items-center gap-2.5 text-small text-text-secondary">
                 <FileText size={16} strokeWidth={1.75} className="text-text-tertiary" />

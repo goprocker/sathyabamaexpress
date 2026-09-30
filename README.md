@@ -81,6 +81,12 @@ The **Setup** section (`/onboarding`) is where a household tells Livora about it
 
 The arithmetic (fuel left, real mileage, due dates, completion) lives in `packages/life` as pure, tested functions; the UI only displays the results.
 
+## Demo login and subscriptions
+
+The sign-in page has a **Try the demo** button. It signs in to a shared Clerk demo account (`DEMO_USER_EMAIL`, default `demo@livora.app`, created on first use) whose household is fully filled: family, documents, vehicles, bills, vendors and subscriptions. The server picks the account, so the button cannot be used to sign in as anyone else. A banner offers **Reset sample data** and **Leave demo**. In demo mode file uploads are off and vendor calls are simulated.
+
+**Subscriptions** (Netflix, Prime Video, JioHotstar, Spotify, YouTube Premium, SonyLIV, ZEE5, Apple TV+, or your own) live under Setup, Bills. Each one appears in Life Admin with a **Pay** button that opens the provider's own billing page in a new tab (Livora never handles the payment). Tap **I've paid** to move the due date forward one billing cycle.
+
 ## System architecture
 
 ```mermaid

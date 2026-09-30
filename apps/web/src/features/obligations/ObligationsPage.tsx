@@ -7,12 +7,14 @@ import { Link } from "@tanstack/react-router";
 import {
   CalendarDays,
   Car,
+  ExternalLink,
   FileText,
   Receipt,
   Repeat,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import {
+  Button,
   Card,
   Divider,
   ErrorState,
@@ -21,6 +23,8 @@ import {
   type PillTone,
 } from "@/components/ui/primitives";
 import { useObligations } from "@/hooks/queries";
+import { useSetupAction } from "@/hooks/profile";
+import * as profileApi from "@/lib/profileApi";
 import { useOverview } from "@/hooks/life";
 import { dayLabel } from "@household/life";
 import { TriangleAlert } from "lucide-react";
@@ -180,6 +184,9 @@ export function ObligationsPage() {
   );
 }
 
+/** A subscription's obligation id is `obl_p_sub:<id>`; the id after the prefix is what the profile API knows it by. */
+const SUBSCRIPTION_PREFIX = "obl_p_sub:";
+
 function ObligationRow({
   obligation,
   withDivider,
@@ -189,17 +196,21 @@ function ObligationRow({
 }) {
   const status = statusMeta[obligation.status];
   const hasLink = obligation.status === "action_proposed" && obligation.linkedActionId;
+  const subscriptionId = obligation.id.startsWith(SUBSCRIPTION_PREFIX) ? obligation.id.slice(SUBSCRIPTION_PREFIX.length) : null;
+  const markPaid = useSetupAction(profileApi.markSubscriptionPaid);
+  const [failure, setFailure] = useState<string | null>(null);
+  const host = obligation.payUrl ? new URL(obligation.payUrl).hostname.replace(/^www\./, "") : null;
 
   const body = (
     <>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-[220px]">
         <div className="flex flex-wrap items-baseline gap-x-2">
           <p className="body-text font-medium">{obligation.title}</p>
           <span className="text-meta">{obligation.provider}</span>
         </div>
         <p className="text-small text-text-secondary">{obligation.detail}</p>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
         {obligation.dueDate && (
           <span
             className={`text-small ${
@@ -223,12 +234,44 @@ function ObligationRow({
       {hasLink ? (
         <Link
           to="/actions"
-          className="-mx-2 flex items-center gap-4 rounded-[6px] px-2 py-3 transition-colors duration-150 hover:bg-surface-subtle"
+          className="-mx-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[6px] px-2 py-3 transition-colors duration-150 hover:bg-surface-subtle"
         >
           {body}
         </Link>
       ) : (
-        <div className="-mx-2 flex items-center gap-4 px-2 py-3">{body}</div>
+        <div className="-mx-2 flex flex-wrap items-center gap-x-4 gap-y-2 px-2 py-3">{body}</div>
+      )}
+      {obligation.payUrl && host && (
+        <div className="flex flex-wrap items-center gap-2 pb-3">
+          {/* The payment happens on the service's own site, in a new tab. */}
+          <a
+            href={obligation.payUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-[15px] text-accent-text transition-colors duration-150 hover:bg-accent-hover"
+          >
+            Pay on {host}
+            <ExternalLink size={15} strokeWidth={1.75} />
+          </a>
+          {subscriptionId && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={markPaid.isPending}
+              onClick={() => {
+                setFailure(null);
+                markPaid.mutate(subscriptionId, { onError: (err) => setFailure(err instanceof Error ? err.message : "Couldn't update it.") });
+              }}
+            >
+              {markPaid.isPending ? "Saving…" : "I've paid"}
+            </Button>
+          )}
+          {failure && (
+            <span role="alert" className="text-[13px] text-danger">
+              {failure}
+            </span>
+          )}
+        </div>
       )}
     </div>
   );

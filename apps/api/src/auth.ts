@@ -9,7 +9,7 @@ import type { UserStores } from "./user-stores.js";
 export type SessionVerifier = (token: string) => Promise<{ userId: string }>;
 
 /** Routes that must stay reachable without a user session. */
-const PUBLIC_ROUTES = new Set(["/api/health", "/api/ready"]);
+const PUBLIC_ROUTES = new Set(["/api/health", "/api/ready", "/api/demo/login"]);
 const PUBLIC_PREFIXES = [
   // Signed with its own HMAC secret by Snapserve, not by a signed-in user.
   "/api/webhooks/",

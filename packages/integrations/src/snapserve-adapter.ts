@@ -70,6 +70,8 @@ export interface SnapserveOutboundCallParams {
   vendorName: string;
   orderSummary: string;
   callScript: string;
+  /** Never dial out: use the simulator even when live calls are configured (the shared demo household). */
+  forceSimulated?: boolean;
   stepDelayMs?: number;
   onStatusUpdate?: (
     status: SnapserveCallStatus,
@@ -636,7 +638,7 @@ export async function executeSnapserveOutboundCall(
     `call_snap_${crypto.randomUUID().slice(0, 8)}`
   );
 
-  if (!isSnapserveLive()) {
+  if (params.forceSimulated || !isSnapserveLive()) {
     return runSimulatedCall(params, delayMs);
   }
 

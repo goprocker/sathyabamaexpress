@@ -37,9 +37,10 @@ import {
   runVoiceIntakeWorkflow,
 } from "@household/agents";
 import { clerkVerifier, registerAuth, verifyRequestToken, type SessionVerifier } from "./auth.js";
+import { clerkAdmin, registerDemoLogin, type ClerkAdmin } from "./demo-login.js";
 import { defaultFileStore, type FileStore } from "./file-store.js";
 import { registerProfileRoutes } from "./profile-routes.js";
-import { currentUser, runWithUser, scopedStore } from "./request-context.js";
+import { currentUser, ownsHousehold, runWithUser, scopedStore } from "./request-context.js";
 import { defaultStateBackend, type StateBackend } from "./state-backend.js";
 import { UserStores } from "./user-stores.js";
 import { registerLifeRoutes } from "./life-routes.js";
@@ -163,6 +164,8 @@ export interface ApiAppOptions {
   stateBackend?: StateBackend | undefined;
   /** Where uploaded documents are kept (encrypted). Defaults to Postgres or local files, and is off without an encryption key. */
   fileStore?: FileStore | null | undefined;
+  /** Replaces Clerk's admin API for the demo login (tests). */
+  demoAdmin?: ClerkAdmin | undefined;
 }
 
 export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions = {}): FastifyInstance {
@@ -177,6 +180,8 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     options.verifySession ?? (options.clerkSecretKey ? clerkVerifier(options.clerkSecretKey) : undefined);
   const userStores = verifySession ? new UserStores(options.stateBackend ?? defaultStateBackend()) : null;
   if (verifySession && userStores) registerAuth(app, verifySession, userStores);
+  const demoAdmin = options.demoAdmin ?? (options.clerkSecretKey ? clerkAdmin(options.clerkSecretKey) : undefined);
+  if (userStores && demoAdmin) registerDemoLogin(app, { admin: demoAdmin, stores: userStores });
 
   // Active SSE clients for live UI updates (Snapserve call progression, inventory changes, etc.).
   // Each is tagged with its owner so one user never receives another's events (null = shared demo).
@@ -331,7 +336,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     ];
 
     // The illustrative transitions are demo-only; a signed-in household with no history has none.
-    const noHistory = currentUser() ? ([] as typeof seedFallbackTransitions) : seedFallbackTransitions;
+    const noHistory = ownsHousehold() ? ([] as typeof seedFallbackTransitions) : seedFallbackTransitions;
 
     const latestTransitions =
       recentEvents.find((e) => e.transitions && e.transitions.length > 0)
@@ -473,7 +478,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     // Demo mode keeps its illustrative dinner; a signed-in household with no plan has none.
     const activeMeal =
       todayMeals[0] ||
-      (currentUser()
+      (ownsHousehold()
         ? null
         : { recipeName: "Chicken Biryani", dishName: "Chicken Biryani", servings: 6, shortageCount: 2 });
 
@@ -618,7 +623,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
         rawText,
         vendorHint,
         // Signed-in households never get invented sample lines.
-        demoFallback: !currentUser(),
+        demoFallback: !ownsHousehold(),
       });
     } catch (err) {
       return reply.code(422).send({ error: err instanceof Error ? err.message : "Couldn't read that receipt." });
@@ -837,7 +842,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     if (!graph) {
       // Demo mode plans a sample dinner so the ripple screen has something to show.
       // A signed-in household must never get a meal it did not plan.
-      if (currentUser()) return reply.code(404).send({ error: "No ripple yet. Plan a meal to see what it changes." });
+      if (ownsHousehold()) return reply.code(404).send({ error: "No ripple yet. Plan a meal to see what it changes." });
       const sim = simulateMeal(store, {
         householdId: "hh_demo_001",
         recipeId: "rcp_chicken_biryani",

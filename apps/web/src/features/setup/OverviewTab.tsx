@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, ArrowRight, Check, Circle, Info, ShieldCheck } from "lucide-react";
 import type { SetupStepId } from "@household/contracts";
 import { Button } from "@/components/ui/primitives";
@@ -23,6 +24,9 @@ const severityStyle = {
 export function OverviewTab({ profile, onOpen }: { profile: ProfileView; onOpen: (tab: SetupTab) => void }) {
   const { progress, reminders } = profile;
   const [failure, setFailure] = useState<string | null>(null);
+  const navigate = useNavigate();
+  // Setup reminders open their tab; others (a subscription renewal) open the page they belong to.
+  const openReminder = (href: string) => (href.startsWith("/onboarding") ? onOpen(tabFromHref(href)) : void navigate({ to: href }));
   const skip = useSetupAction((args: { step: Exclude<SetupStepId, "family">; skipped: boolean }) => api.skipStep(args.step, args.skipped));
   const next = progress.steps.find((s) => s.id === progress.nextStep);
   const doneCount = progress.steps.filter((s) => s.done || s.skipped).length;
@@ -63,7 +67,7 @@ export function OverviewTab({ profile, onOpen }: { profile: ProfileView; onOpen:
                   <p className="text-[15px] font-medium">{r.title}</p>
                   <p className="text-[13px] text-text-secondary">{r.detail}</p>
                 </div>
-                <Button size="sm" variant="ghost" onClick={() => onOpen(tabFromHref(r.href))}>
+                <Button size="sm" variant="ghost" onClick={() => openReminder(r.href)}>
                   Open
                 </Button>
               </li>

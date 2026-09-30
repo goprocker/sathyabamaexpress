@@ -15,18 +15,23 @@ import {
   MASKED_DOCUMENT_TYPES,
   MAX_DOCUMENT_BYTES,
   SETUP_STEP_IDS,
+  SUBSCRIPTION_CATALOG,
+  SubscriptionInputSchema,
   ServiceRecordInputSchema,
   TripInputSchema,
   VehicleInputSchema,
   VendorInputSchema,
   emptyHouseholdProfile,
   maskDocumentNumber,
+  nextBillingDate,
   obligationTiming,
   type DocumentInput,
   type DocumentRecord,
   type HouseholdProfile,
   type Member,
   type StoredFileRef,
+  type SubscriptionInput,
+  type SubscriptionRecord,
   type VehicleRecord,
   type Vendor,
   type VendorInput,
@@ -101,13 +106,16 @@ function parseData<T>(schema: { parse(input: unknown): T }, fields: Record<strin
 
 export function registerProfileRoutes(app: FastifyInstance, store: HouseholdStore, files: FileStore | null) {
   const householdId = () => store.getState().households[0]?.id ?? "hh_demo_001";
-  const profileOf = (state: CanonicalStateData): HouseholdProfile => state.profile ?? emptyHouseholdProfile();
+  /** Households saved before a section existed lack its list; fill in the blanks so every list is always an array. */
+  const profileOf = (state: CanonicalStateData): HouseholdProfile => ({ ...emptyHouseholdProfile(), ...state.profile });
+  const isDemo = () => store.getState().isDemo === true;
 
   /** Files hold identity documents, so they only exist for a signed-in user and only when a key is configured. */
-  const uploadsEnabled = () => Boolean(files && currentUser());
+  const uploadsEnabled = () => Boolean(files && currentUser()) && !isDemo();
 
   const saveFile = async (file: UploadedFile): Promise<StoredFileRef> => {
     const user = currentUser();
+    if (isDemo()) throw new HttpError(403, "The demo doesn't store files. Sign up to keep your own documents.");
     if (!files || !user) {
       throw new HttpError(403, "Sign in to store documents. Files are kept encrypted against your account.");
     }
@@ -134,7 +142,7 @@ export function registerProfileRoutes(app: FastifyInstance, store: HouseholdStor
   const change = <T>(operation: string, entityId: string, fn: (profile: HouseholdProfile, draft: CanonicalStateData) => T): T =>
     store.mutate(
       (draft) => {
-        draft.profile ??= emptyHouseholdProfile();
+        draft.profile = { ...emptyHouseholdProfile(), ...draft.profile };
         const out = fn(draft.profile, draft);
         syncObligations(draft);
         return out;
@@ -209,6 +217,10 @@ export function registerProfileRoutes(app: FastifyInstance, store: HouseholdStor
       bills: profile.electricityBills
         .map((b) => ({ ...b, ...obligationTiming(b.dueDate, today) }))
         .sort((a, b) => b.dueDate.localeCompare(a.dueDate)),
+      subscriptions: (profile.subscriptions ?? [])
+        .map((sub) => ({ ...sub, ...obligationTiming(sub.nextDueOn, today) }))
+        .sort((a, b) => a.nextDueOn.localeCompare(b.nextDueOn)),
+      isDemo: isDemo(),
       vendors,
       reminders: profileReminders({ profile, today, vehicleStatuses: statuses }),
     };
@@ -556,6 +568,75 @@ export function registerProfileRoutes(app: FastifyInstance, store: HouseholdStor
     } catch {
       throw new HttpError(422, "Couldn't read that bill. Try a clearer photo, or type the details in.");
     }
+  });
+
+  // ── Subscriptions (Netflix and other OTT, music, anything that renews) ───
+
+  const toSubscription = (input: SubscriptionInput, id: string, existing?: SubscriptionRecord): SubscriptionRecord => {
+    const catalogue = SUBSCRIPTION_CATALOG[input.provider];
+    const record: SubscriptionRecord = {
+      id,
+      provider: input.provider,
+      name: input.provider === "other" ? (input.name ?? "Subscription") : catalogue.label,
+      amountInr: input.amountInr,
+      cycle: input.cycle,
+      nextDueOn: input.nextDueOn,
+      payUrl: input.payUrl ?? catalogue.payUrl,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+    };
+    if (input.plan) record.plan = input.plan;
+    if (existing?.lastPaidOn) record.lastPaidOn = existing.lastPaidOn;
+    return record;
+  };
+
+  app.post("/api/profile/subscriptions", async (request) => {
+    const input = SubscriptionInputSchema.parse(request.body ?? {});
+    return once(request, () => {
+      const id = newId("sub");
+      change("SUBSCRIPTION_ADDED", id, (p, draft) => {
+        const record = toSubscription(input, id);
+        p.subscriptions = [...(p.subscriptions ?? []), record];
+        note(draft, `${record.name} added`, `₹${Math.round(record.amountInr).toLocaleString("en-IN")} ${record.cycle}, next due ${record.nextDueOn}`);
+      });
+      return { ok: true, id };
+    });
+  });
+
+  app.put("/api/profile/subscriptions/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const input = SubscriptionInputSchema.parse(request.body ?? {});
+    change("SUBSCRIPTION_UPDATED", id, (p) => {
+      const existing = (p.subscriptions ?? []).find((sub) => sub.id === id);
+      if (!existing) throw new HttpError(404, "Subscription not found.");
+      p.subscriptions = (p.subscriptions ?? []).map((sub) => (sub.id === id ? toSubscription(input, id, existing) : sub));
+    });
+    return { ok: true };
+  });
+
+  // "I've paid": the payment itself happens on the provider's site, so this only moves the next due date forward one cycle.
+  app.post("/api/profile/subscriptions/:id/paid", async (request) => {
+    const { id } = request.params as { id: string };
+    const result = change("SUBSCRIPTION_PAID", id, (p, draft) => {
+      const existing = (p.subscriptions ?? []).find((sub) => sub.id === id);
+      if (!existing) throw new HttpError(404, "Subscription not found.");
+      const today = todayIso();
+      let next = nextBillingDate(existing.nextDueOn, existing.cycle);
+      // Paying late must not leave the next date already in the past.
+      for (let i = 0; i < 36 && next < today; i += 1) next = nextBillingDate(next, existing.cycle);
+      p.subscriptions = (p.subscriptions ?? []).map((sub) => (sub.id === id ? { ...sub, lastPaidOn: today, nextDueOn: next } : sub));
+      note(draft, `${existing.name} paid`, `Next payment ${next}`);
+      return { nextDueOn: next };
+    });
+    return { ok: true, ...result };
+  });
+
+  app.delete("/api/profile/subscriptions/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    change("SUBSCRIPTION_REMOVED", id, (p) => {
+      if (!(p.subscriptions ?? []).some((sub) => sub.id === id)) throw new HttpError(404, "Subscription not found.");
+      p.subscriptions = (p.subscriptions ?? []).filter((sub) => sub.id !== id);
+    });
+    return { ok: true };
   });
 
   // ── Vendors ──────────────────────────────────────────────────────────────

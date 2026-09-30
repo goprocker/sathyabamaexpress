@@ -13,6 +13,7 @@ import {
   type Obligation,
   type ServiceRecord,
   type SetupStepId,
+  type SubscriptionRecord,
   type TripRecord,
   type VehicleRecord,
   type Vendor,
@@ -150,6 +151,20 @@ export function profileReminders(input: { profile: HouseholdProfile; today: stri
     });
   }
 
+  for (const sub of profile.subscriptions ?? []) {
+    const days = daysBetween(today, sub.nextDueOn);
+    if (days > 5) continue;
+    reminders.push({
+      id: `subscription:${sub.id}`,
+      kind: "subscription",
+      severity: dueSeverity(days),
+      title: days < 0 ? `${sub.name} payment is overdue` : `${sub.name} renews ${inDays(days)}`,
+      detail: `₹${Math.round(sub.amountInr).toLocaleString("en-IN")} ${sub.cycle}. Pay on ${new URL(sub.payUrl).hostname.replace(/^www\./, "")}.`,
+      dueOn: sub.nextDueOn,
+      href: "/obligations",
+    });
+  }
+
   return reminders.sort(
     (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || (a.dueOn ?? "9999").localeCompare(b.dueOn ?? "9999"),
   );
@@ -218,6 +233,17 @@ export function deriveObligations(input: {
     );
   }
 
+  for (const sub of profile.subscriptions ?? []) {
+    out.push(
+      make(`sub:${sub.id}`, "subscription", sub.name, [sub.plan, sub.cycle].filter(Boolean).join(" · "), sub.nextDueOn, {
+        amountInr: sub.amountInr,
+        dependentEntity: sub.name,
+        payUrl: sub.payUrl,
+        recurrence: sub.cycle === "monthly" ? "MONTHLY" : "NONE",
+      }),
+    );
+  }
+
   const statuses =
     input.vehicleStatuses ??
     profile.vehicles.map((vehicle) =>
@@ -258,6 +284,7 @@ export function assistantHousehold(input: {
       suggestions: v.suggestions,
     })),
     electricityBills: profile.electricityBills.map((b) => ({ amountInr: b.amountInr, dueDate: b.dueDate, paid: b.paid })),
+    subscriptions: (profile.subscriptions ?? []).map((sub) => ({ name: sub.name, amountInr: sub.amountInr, cycle: sub.cycle, nextDueOn: sub.nextDueOn })),
     vendors: vendors.map((v) => ({ name: v.name, kind: v.kind })),
   };
 }
@@ -280,6 +307,9 @@ export interface ProfileView {
     recentTrips: TripRecord[];
   }>;
   bills: Array<ElectricityBillRecord & { daysUntilDue: number; status: "OVERDUE" | "DUE_SOON" | "UPCOMING" }>;
+  subscriptions: Array<SubscriptionRecord & { daysUntilDue: number; status: "OVERDUE" | "DUE_SOON" | "UPCOMING" }>;
+  /** True for the shared demo household: sample data, no uploads, no live calls. */
+  isDemo: boolean;
   vendors: Vendor[];
   reminders: Reminder[];
 }

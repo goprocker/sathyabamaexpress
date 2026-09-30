@@ -14,6 +14,15 @@ export const runWithUser = <T>(ctx: UserContext, fn: () => T): T => storage.run(
 export const currentUser = (): UserContext | undefined => storage.getStore();
 
 /**
+ * True for a signed-in user's own household: it starts empty and never shows sample data.
+ * False for the shared no-login demo and for the demo account, which are meant to be full of sample data.
+ */
+export const ownsHousehold = (): boolean => {
+  const user = storage.getStore();
+  return user !== undefined && user.store.getState().isDemo !== true;
+};
+
+/**
  * A store handle that always resolves to the signed-in user's own store, and
  * to `fallback` (the shared demo store) when nobody is signed in. Lets the
  * existing route handlers keep using a single `store` variable.

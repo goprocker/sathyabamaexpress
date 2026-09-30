@@ -933,6 +933,8 @@ export async function getObligations(): Promise<Obligation[]> {
           : undefined,
       recurrence: "monthly",
       status: statusMap[String(o.status || "DUE_SOON")] || "due_soon",
+      // Only a secure link can become a Pay button.
+      ...(typeof o.payUrl === "string" && o.payUrl.startsWith("https://") ? { payUrl: o.payUrl } : {}),
     }));
   }
 

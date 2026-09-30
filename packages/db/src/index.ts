@@ -26,6 +26,7 @@ import type {
   HouseholdProfile,
 } from "@household/contracts";
 import { emptyHouseholdProfile } from "@household/contracts";
+import { buildDemoHousehold } from "./demo-household.js";
 
 export interface StoredEvent {
   id: string;
@@ -100,6 +101,8 @@ export interface CanonicalStateData {
   cart?: CartItem[];
   /** Family, documents, vehicles and bills collected in Setup. Absent on older saved states. */
   profile?: HouseholdProfile;
+  /** The shared demo household: sample data everywhere, no uploads, no live calls. */
+  isDemo?: boolean;
 }
 
 export function emptyCanonicalState(): CanonicalStateData {
@@ -1101,6 +1104,11 @@ export function buildFreshUserState(): CanonicalStateData {
     recipes: seed.recipes,
     profile: emptyHouseholdProfile(),
   };
+}
+
+/** The demo household: the kitchen seed plus a fully filled-in family, documents, vehicles, bills, subscriptions and vendors. */
+export function buildDemoUserState(): CanonicalStateData {
+  return buildDemoHousehold(buildCanonicalSeedState("pre-receipt"));
 }
 
 export interface StoreOptions {
