@@ -3,7 +3,6 @@
 // given a verifier (server.ts / vercel-entry.ts do that when CLERK_SECRET_KEY
 // is set), so local demos and tests keep working unauthenticated.
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { verifyToken } from "@clerk/backend";
 import { runWithUser } from "./request-context.js";
 import type { UserStores } from "./user-stores.js";
 
@@ -18,16 +17,40 @@ const PUBLIC_PREFIXES = [
   "/api/events/stream",
 ];
 
-export function clerkVerifier(secretKey: string): SessionVerifier {
+/**
+ * Checks a Clerk session token: an RS256 JWT signed by your Clerk instance.
+ * The signing keys come from Clerk's JWKS endpoint (authorised with the secret
+ * key, so only this instance's keys are trusted). The library loads on the
+ * first sign-in check, so a problem with it can never stop the API from booting.
+ */
+export function clerkVerifier(
+  secretKey: string,
+  /** Replaces the Clerk key set (tests). */
+  keySource?: import("jose").JWTVerifyGetKey,
+): SessionVerifier {
   const authorizedParties = process.env.CLERK_AUTHORIZED_PARTIES?.split(",")
-    .map((p) => p.trim())
+    .map((p) => p.trim().replace(/\/$/, ""))
     .filter(Boolean);
+  let keys: Promise<import("jose").JWTVerifyGetKey> | undefined = keySource ? Promise.resolve(keySource) : undefined;
+
+  const loadKeys = () =>
+    import("jose").then(({ createRemoteJWKSet }) =>
+      createRemoteJWKSet(new URL("https://api.clerk.com/v1/jwks"), {
+        headers: { Authorization: `Bearer ${secretKey}` },
+        cooldownDuration: 30_000,
+      }),
+    );
+
   return async (token) => {
-    const payload = await verifyToken(token, {
-      secretKey,
-      ...(authorizedParties?.length ? { authorizedParties } : {}),
-    });
-    if (!payload.sub) throw new Error("Token has no subject.");
+    const { jwtVerify } = await import("jose");
+    keys ??= loadKeys();
+    const { payload } = await jwtVerify(token, await keys, { algorithms: ["RS256"], clockTolerance: 5 });
+    // Same rule Clerk applies: when a token names the site that requested it, that site must be allowed.
+    const origin = typeof payload.azp === "string" ? payload.azp.replace(/\/$/, "") : undefined;
+    if (authorizedParties?.length && origin && !authorizedParties.includes(origin)) {
+      throw Object.assign(new Error("origin not allowed"), { reason: "token-invalid-authorized-parties" });
+    }
+    if (typeof payload.sub !== "string" || !payload.sub) throw new Error("token has no subject");
     return { userId: payload.sub };
   };
 }

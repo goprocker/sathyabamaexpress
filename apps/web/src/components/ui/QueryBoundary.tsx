@@ -19,7 +19,7 @@ function describe(error: unknown): { message: string; signedOut: boolean } {
     return { message: "The server didn't accept your sign-in. Sign out and sign in again.", signedOut: true };
   }
   if (status === 503) return { message: text || "The server is busy. Try again in a moment.", signedOut: false };
-  if (status && status >= 500) return { message: `The server had a problem (error ${status}). Try again in a moment.`, signedOut: false };
+  if (status && status >= 500) return { message: `${text || "The server had a problem."} (error ${status})`, signedOut: false };
   return { message: text || "Couldn't load this right now.", signedOut: false };
 }
 

@@ -20,5 +20,8 @@
     "typecheck": "pnpm -r typecheck",
     "typecheck:backend": "pnpm --filter @household/api exec tsc -p ../../tsconfig.backend.json --noEmit",
     "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "jose": "^5.10.0"
   }
 }
