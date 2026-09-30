@@ -53,6 +53,7 @@ export function LandingNav() {
                 {l.label}
               </a>
             ))}
+            <Link to="/docs" className="flex h-10 items-center rounded-full px-4 text-[15px] transition-colors duration-[180ms] hover:bg-surface-elevated">Documentation</Link>
             <Link
               to="/"
               className="ml-2 btn-primary !min-h-0 h-10 !rounded-full !px-4"
@@ -87,6 +88,7 @@ export function LandingNav() {
                   {l.label}
                 </a>
               ))}
+              <Link to="/docs" onClick={() => setOpen(false)} className="flex min-h-[48px] items-center rounded-[12px] px-3 text-[18px] tracking-[-0.02em] hover:bg-surface-elevated">Documentation</Link>
               <Link
                 to="/"
                 className="mt-2 inline-flex min-h-[48px] items-center justify-center gap-1.5 rounded-full bg-accent px-4 text-[16px] text-accent-text"

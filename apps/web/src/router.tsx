@@ -26,6 +26,7 @@ import { VoicePage } from "@/features/voice/VoicePage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { MembersPage } from "@/features/settings/MembersPage";
 import { OnboardingPage } from "@/features/onboarding/OnboardingPage";
+import { DocsPage } from "@/docs/DocsPage";
 
 // Landing (GSAP + Lenis + video story) is code-split so the product
 // bundle stays lean. Preloaded from the dashboard demo helper link.
@@ -224,6 +225,18 @@ const landingRoute = createRoute({
   ),
 });
 
+const docsIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/docs",
+  component: DocsPage,
+});
+
+const docsArticleRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/docs/$slug",
+  component: DocsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   kitchenRoute,
@@ -251,6 +264,8 @@ const routeTree = rootRoute.addChildren([
   membersRoute,
   onboardingRoute,
   landingRoute,
+  docsIndexRoute,
+  docsArticleRoute,
 ]);
 
 export const router = createRouter({ routeTree });
