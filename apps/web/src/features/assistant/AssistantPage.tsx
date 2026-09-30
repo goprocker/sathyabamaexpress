@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useSearch } from "@tanstack/react-router";
-import { Check, ImagePlus, Mic, SendHorizontal, ShoppingCart, Sparkles, Undo2, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Check, ImagePlus, Mic, Phone, SendHorizontal, ShoppingCart, Sparkles, Undo2, X } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useAddCartItem, useAsk, useAskByVoice, useRemoveCartItem, useSetCartQuantity, useStarters } from "@/hooks/life";
 import type { AssistantAction } from "@household/contracts";
 import { resizeImage } from "@/lib/image";
 import type { Answer } from "@/lib/lifeApi";
+import { actionsQuery, useApproveAction } from "@/hooks/queries";
 import { liveTranscriptionSupported, startLiveTranscription, type LiveTranscription } from "@/lib/voiceStream";
 
 interface Turn {
@@ -229,6 +231,10 @@ export function AssistantPage() {
                   </ul>
                 )}
                 {t.a.actions && t.a.actions.length > 0 && <ActionReceipts actions={t.a.actions} />}
+                {t.a.orders && t.a.orders.length > 0 && <OrderCards orders={t.a.orders} />}
+                {t.a.steps && t.a.steps.length > 0 && (
+                  <p className="mono-label mt-3">Used: {t.a.steps.join(" · ")}</p>
+                )}
                 {t.a.sources.length > 0 && !t.a.actions?.length && (
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     <span className="mono-label">Based on</span>
@@ -389,5 +395,65 @@ function ActionReceipt({ action }: { action: AssistantAction }) {
         </span>
       )}
     </li>
+  );
+}
+
+const ORDER_STATUS: Record<string, string> = {
+  proposed: "Ready to call",
+  approved: "Calling…",
+  executing: "Calling…",
+  confirmed: "Store confirmed",
+  failed: "Call failed",
+  rejected: "Cancelled",
+};
+
+/** Store orders the agent prepared: one tap calls the store (the approval), then the card follows the call. */
+function OrderCards({ orders }: { orders: NonNullable<Answer["orders"]> }) {
+  const approve = useApproveAction();
+  const actions = useQuery({
+    ...actionsQuery(),
+    refetchInterval: (q) =>
+      q.state.data?.some((a) => orders.some((o) => o.id === a.id) && (a.status === "approved" || a.status === "executing"))
+        ? 2500
+        : false,
+  });
+  return (
+    <ul className="mt-4 space-y-2" aria-label="Store orders">
+      {orders.map((o) => {
+        const live = actions.data?.find((a) => a.id === o.id);
+        const status = live?.status ?? "proposed";
+        return (
+          <li key={o.id} className="rounded-[20px] bg-surface-elevated px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="min-w-0">
+                <span className="block text-[15px] font-medium">{o.vendor}</span>
+                <span className="block text-[13px] text-text-secondary">
+                  {o.items}
+                  {o.estimatedCost ? ` · about ${o.estimatedCost}` : ""}
+                </span>
+              </span>
+              {status === "proposed" ? (
+                <button
+                  type="button"
+                  disabled={approve.isPending}
+                  onClick={() => approve.mutate(o.id, { onSettled: () => void actions.refetch() })}
+                  className="btn-primary !min-h-0 inline-flex h-11 items-center gap-2 !rounded-full !px-5"
+                >
+                  <Phone size={16} strokeWidth={1.75} />
+                  Call store
+                </button>
+              ) : (
+                <span className="mono-label" role="status">
+                  {ORDER_STATUS[status] ?? status}
+                </span>
+              )}
+            </div>
+            {status === "confirmed" && live?.execution?.detail && (
+              <p className="mt-1 text-[13px] text-text-secondary">{live.execution.detail}</p>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }

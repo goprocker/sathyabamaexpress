@@ -91,6 +91,15 @@ export const useAgentTrace = () => useQuery(agentTraceQuery());
 export const useForecasts = () => useQuery(forecastsQuery());
 export const useObligations = () => useQuery(obligationsQuery());
 export const useRipple = (eventId: string) => useQuery(rippleQuery(eventId));
+
+/** Store orders for what's short; polls while a call is in progress. */
+export const useShortageOrders = () =>
+  useQuery({
+    queryKey: [...keys.actions, "shortage"],
+    queryFn: api.getShortageOrders,
+    refetchInterval: (q) =>
+      q.state.data?.orders.some((o) => o.status === "approved" || o.status === "executing") ? 2500 : false,
+  });
 export const useWhy = (itemId: string) => useQuery(whyQuery(itemId));
 export const useStateDiff = () => useQuery(stateDiffQuery());
 

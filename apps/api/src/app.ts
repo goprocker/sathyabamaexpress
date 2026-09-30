@@ -34,6 +34,8 @@ import {
 import {
   runActionApprovalAndExecutionWorkflow,
   runInventoryReorderWorkflow,
+  planShortageOrders,
+  appendShortageOrders,
   runVoiceOrderWorkflow,
   runMealPlanningWorkflow,
   runObligationIngestWorkflow,
@@ -52,6 +54,7 @@ import { registerVoiceStream } from "./voice-stream.js";
 import { startReorderScheduler } from "./reorder-scheduler.js";
 import { registerStoreRoutes } from "./store-routes.js";
 import { startPhoneOrderWatcher } from "./phone-orders.js";
+import { createAssistantAgent } from "./assistant-agent.js";
 import { createNotificationService, registerPushRoutes, type NotificationService } from "./notifications.js";
 import {
   isSnapserveLive,
@@ -344,6 +347,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
   const life = registerLifeRoutes(app, store, {
     afterInventoryChange: (trigger) => checkReorders(trigger),
     // Opening the notification centre re-checks stock (expiry is time-based), which also refreshes notifications.
+    agent: createAssistantAgent(app),
     householdNotifications: notifications && {
       refresh: () => checkReorders("Notifications opened"),
       feed: notifications.feed,
@@ -1166,6 +1170,7 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
       approverUserId: currentUser()?.userId ?? "usr_sai_001",
       stepDelayMs: 0,
       onBroadcast: broadcastRealtime,
+      execute: body.prepareOnly !== true,
     });
     if (result.actions.length === 0) {
       return reply.code(422).send({
@@ -1177,6 +1182,48 @@ export function buildApiApp(customStore?: HouseholdStore, options: ApiAppOptions
     return {
       actions: result.actions.map(enrichActionWithFrontendShape),
       unassigned: result.unassigned,
+    };
+  });
+
+  // What the ripple engine found short, and the store orders that cover it. Each order
+  // is one tap ("Call store") away from the agent phoning the store.
+  app.get("/api/shortage-orders", async () => {
+    const state0 = store.getState();
+    const householdId = state0.households[0]?.id ?? "hh_demo_001";
+    const latestMeal = state0.mealPlans.filter((m) => m.householdId === householdId).at(-1);
+    // Short items not covered yet (e.g. a store was added after planning) get their orders now.
+    const plan = planShortageOrders(store, {
+      householdId,
+      sourceEventId: latestMeal?.sourceEventId ?? `evt_short_${new Date().toISOString().slice(0, 10)}`,
+      reason: "Your meal plan",
+      rebuildPending: false,
+    });
+    if (plan.proposals.length > 0) {
+      appendShortageOrders(store, householdId, plan.proposals);
+      broadcastRealtime("REORDER_PROPOSED", { created: plan.proposals.map((p) => p.id), withdrawn: [], pending: [] });
+    }
+
+    const state = store.getState();
+    const dayAgo = Date.now() - 86_400_000;
+    const orders = state.actions
+      .filter(
+        (a) =>
+          a.householdId === householdId &&
+          a.type === "VENDOR_PURCHASE_CALL" &&
+          (a.origin === "MEAL_SHORTAGE" || a.origin === "INVENTORY_REORDER" || !a.origin) &&
+          (["PENDING_APPROVAL", "APPROVED", "EXECUTING"].includes(a.status) ||
+            (a.status !== "REJECTED" && Date.parse(a.updatedAt) > dayAgo)),
+      )
+      .map(enrichActionWithFrontendShape);
+    const short = state.resources
+      .filter((r) => r.householdId === householdId && r.deficitQuantity > 0)
+      .map((r) => ({ resourceId: r.id, name: r.canonicalName, deficitDisplay: r.formattedDeficit }));
+    return {
+      orders,
+      short,
+      missingStore: plan.unassigned,
+      storeCount: state.vendors.filter((v) => v.householdId === householdId).length,
+      live: isSnapserveLive(),
     };
   });
 

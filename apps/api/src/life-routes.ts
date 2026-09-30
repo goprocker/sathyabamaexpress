@@ -3,7 +3,8 @@
 // Logic lives in @household/life; this file only adapts the canonical store to
 // the engine's inputs and validates requests with the shared contracts.
 import crypto from "node:crypto";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { AssistantAgent } from "./assistant-agent.js";
 import {
   AssistantAskInputSchema,
   CartAddInputSchema,
@@ -87,6 +88,8 @@ export interface LifeRouteHooks {
     feed: () => Array<{ id: string; group: string; module: ModuleId; title: string; detail: string; minutesAgo: number; href: string; read: boolean }>;
     markRead: (ids: string[] | "all") => void;
   };
+  /** Ask as a tool-calling agent over the whole app (used when OpenAI is configured). */
+  agent?: AssistantAgent;
 }
 
 export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore, hooks: LifeRouteHooks = {}) {
@@ -335,8 +338,24 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore, 
     question: string,
     history?: Array<{ q: string; a: string }>,
     imageDataUrl?: string,
+    request?: FastifyRequest,
   ) => {
     const cartSource = MODULE_SOURCES.cart ? [MODULE_SOURCES.cart] : [];
+    if (process.env.OPENAI_API_KEY?.trim() && hooks.agent) {
+      try {
+        return await hooks.agent({
+          question,
+          history,
+          image: imageDataUrl,
+          authorization: request?.headers.authorization,
+          idempotencyKey: request ? String(request.headers["idempotency-key"] ?? "") || undefined : undefined,
+          snapshot: service.assistantContext(),
+          applyCart: (requested) => applyCartActions(requested),
+        });
+      } catch (err) {
+        app.log.warn({ err }, "assistant agent failed; answering without tools");
+      }
+    }
     if (process.env.OPENAI_API_KEY?.trim()) {
       try {
         const out = await answerWithHouseholdContext({ question, context: service.assistantContext(), history, imageDataUrl });
@@ -370,7 +389,7 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore, 
     const cached = store.getIdempotentResult<{ answer: unknown }>(cacheKey);
     if (cached) return cached;
     const body = AssistantAskInputSchema.parse(request.body ?? {});
-    const result = { answer: await answerQuestion(svc(request), body.question, body.history, body.image) };
+    const result = { answer: await answerQuestion(svc(request), body.question, body.history, body.image, request) };
     if (result.answer.actions.length > 0) store.setIdempotentResult(cacheKey, result);
     return result;
   });
@@ -399,7 +418,7 @@ export function registerLifeRoutes(app: FastifyInstance, store: HouseholdStore, 
     try {
       const stt = await transcribeAudioWithSarvam({ audioBuffer: audio, mimeType, languageCode });
       const question = stt.rawTranscript.trim().slice(0, 500);
-      return { transcript: question, answer: await answerQuestion(svc(request), question, history) };
+      return { transcript: question, answer: await answerQuestion(svc(request), question, history, undefined, request) };
     } catch (err) {
       app.log.warn({ err }, "assistant: transcription failed");
       return reply.code(502).send({ error: "Could not transcribe audio." });

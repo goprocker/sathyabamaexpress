@@ -4,6 +4,7 @@ import { useState } from "react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button, ErrorState, ListSkeleton } from "@/components/ui/primitives";
 import { useRipple } from "@/hooks/queries";
+import { ShortageOrdersPanel } from "./ShortageOrdersPanel";
 import { biryaniWhy } from "@/mocks/data";
 import type {
   RippleGraph,
@@ -243,6 +244,7 @@ export function RipplePage() {
         title="Ripple"
         subtitle="What tomorrow's meal changes across your kitchen."
       />
+      <ShortageOrdersPanel />
       <RippleContent eventId={eventId} />
     </div>
   );

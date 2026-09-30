@@ -23,6 +23,8 @@ export interface VoiceOrderInput {
   householdId?: string;
   stepDelayMs?: number;
   onBroadcast?: RealtimeBroadcastCallback;
+  /** false: save the per-store orders and stop, leaving each call to a "Call store" tap. */
+  execute?: boolean;
 }
 
 export interface VoiceOrderResult {
@@ -158,6 +160,8 @@ export async function runVoiceOrderWorkflow(store: HouseholdStore, input: VoiceO
     },
   );
   input.onBroadcast?.("REORDER_PROPOSED", { created: proposals.map((p) => p.id), withdrawn: [], pending: [] });
+
+  if (input.execute === false) return { duplicate: false, actions: proposals, unassigned: plan.unassigned };
 
   // One store at a time: each call runs through the approval token + Snapserve path.
   const actions: ActionProposal[] = [];

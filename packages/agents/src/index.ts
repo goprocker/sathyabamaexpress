@@ -40,6 +40,7 @@ import {
 } from "@household/integrations";
 import { buildVendorCallScript as buildHumanizedCallScript } from "./voice-agent.js";
 import { AgentTraceRecorder } from "@household/tools";
+import { planShortageOrders, saveShortageOrders, type ShortageOrderPlan } from "./shortage-orders.js";
 
 /** Vendors from the demo seed (copied into every new household); their phone numbers are placeholders. */
 const SEEDED_DEMO_VENDOR_IDS = new Set(["vnd_nellai_meats", "vnd_kovai_greens"]);
@@ -614,132 +615,35 @@ export async function runMealPlanningWorkflow(
   const proposedActions: ActionProposal[] = [];
   let primaryActionId: string | undefined;
 
+  // Short items go to the household's stores that sell them: one order per store.
+  let unassignedShortages: ShortageOrderPlan["unassigned"] = [];
   if (simulation.shortageCount > 0) {
-    const actionProposal = await recorder.runStep({
+    const plan = await recorder.runStep({
       agentName: "ActionPlannerAgent",
-      executionMode: "LLM_AGENT",
-      action: "Proposed consolidated vendor purchase action",
-      reason: `Prepare order for ${simulation.shortages
+      executionMode: "DETERMINISTIC_ENGINE",
+      action: "Prepared store orders for short ingredients",
+      reason: `Route ${simulation.shortages
         .map((s) => `${s.formattedDeficit} ${s.name}`)
-        .join(" & ")} with 'Why?' evidence`,
-      execute: async ({ callTool }) => {
-        return callTool(
+        .join(", ")} to the stores that sell them`,
+      execute: async ({ callTool }) =>
+        callTool(
           "action.prepare",
-          `Construct purchase proposal for ${simulation.shortageCount} missing ingredients`,
-          () => {
-            const state = store.getState();
-            const vendor =
-              state.vendors.find(
-                (v) => v.householdId === householdId && v.isPreferred
-              ) || state.vendors[0];
-
-            const actionId = `act_${crypto.randomUUID().slice(0, 8)}`;
-            primaryActionId = actionId;
-            const nowIso = new Date().toISOString();
-
-            const orderItems: ActionOrderItem[] = simulation.shortages.map(
-              (s) => {
-                // Standard pack rounding: 100 ml curd deficit -> 200 ml standard pouch
-                const orderQty =
-                  s.resourceId === "res_curd" && s.deficitQty <= 200
-                    ? 200
-                    : s.deficitQty;
-                const estCost =
-                  s.resourceId === "res_chicken"
-                    ? Math.round((orderQty / 1000) * 300)
-                    : s.resourceId === "res_curd"
-                      ? 30
-                      : 80;
-
-                return {
-                  resourceId: s.resourceId,
-                  name: s.name,
-                  deficitDisplay: s.formattedDeficit,
-                  orderQuantity: orderQty,
-                  orderUnit: s.baseUnit,
-                  orderDisplay: formatQuantityDisplay(
-                    orderQty,
-                    s.baseUnit,
-                    s.displayUnit
-                  ),
-                  estimatedCostInr: estCost,
-                };
-              }
-            );
-
-            const totalCost = orderItems.reduce(
-              (acc, item) => acc + item.estimatedCostInr,
-              0
-            );
-            const titleParts = orderItems.map(
-              (i) => `${i.orderDisplay} ${i.name}`
-            );
-            const title = `Purchase ${titleParts.join(" & ")}`;
-            const reasonSummary = `Tomorrow's ${simulation.recipe.name} (${
-              simulation.servings
-            } servings) requires ${simulation.shortages
-              .map((s) => `${s.formattedRequired} ${s.name.toLowerCase()}`)
-              .join(" and ")}. Current inventory contains ${simulation.shortages
-              .map((s) => `${s.formattedOnHand} ${s.name.toLowerCase()}`)
-              .join(" and ")}.`;
-
-            const callScript = buildVendorCallScript({
-              householdName: "Sai's home",
-              items: orderItems.map((i) => ({
-                orderDisplay: i.orderDisplay,
-                name: i.name,
-              })),
-              deliveryWindow: "tomorrow morning before 10:00 AM",
-            }).combined;
-
-            const canonicalPayload = {
-              actionId,
-              householdId,
-              vendorId: vendor?.id,
-              items: orderItems.map((i) => ({
-                resourceId: i.resourceId,
-                orderQuantity: i.orderQuantity,
-                orderUnit: i.orderUnit,
-              })),
-            };
-
-            const payloadHash = computePayloadHash(canonicalPayload);
-
-            const proposal: ActionProposal = {
-              id: actionId,
+          `Per-store orders for ${simulation.shortageCount} short ingredients`,
+          () =>
+            planShortageOrders(store, {
               householdId,
               sourceEventId: eventId,
-              type: "VENDOR_PURCHASE_CALL",
-              origin: "MEAL_SHORTAGE",
-              status: "PENDING_APPROVAL",
-              title,
-              subtitle: `${vendor?.name || "Kaveri Fresh Mart"} · Tomorrow morning delivery`,
-              reasonSummary,
-              whyEvidence: [], // Populated with ripple graph explanations below
-              targetVendor: vendor,
-              items: orderItems,
-              estimatedTotalCostInr: totalCost,
-              deliveryWindow: "Tomorrow morning (before 10:00 AM)",
-              callScript,
-              payloadHash,
-              approvalRequired: true,
-              approvedBy: null,
-              approvedAt: null,
-              externalCallId: null,
-              externalCallStatus: null,
-              callSteps: [],
-              outcome: null,
-              createdAt: nowIso,
-              updatedAt: nowIso,
-            };
-
-            return proposal;
-          },
-          (act) => `Prepared ${act.id}: ${act.title} (₹${act.estimatedTotalCostInr})`
-        );
-      },
+              reason: `${simulation.recipe.name} for ${simulation.servings}`,
+            }),
+          (p) =>
+            `${p.proposals.length} store order(s)${
+              p.unassigned.length ? `; no store sells ${p.unassigned.map((u) => u.name).join(", ")}` : ""
+            }`
+        ),
     });
-    proposedActions.push(actionProposal);
+    proposedActions.push(...plan.proposals);
+    unassignedShortages = plan.unassigned;
+    primaryActionId = plan.proposals[0]?.id;
   }
 
   // Step 6: Deterministic Ripple Engine builds causal DAG & "Why?" evidence
@@ -763,21 +667,30 @@ export async function runMealPlanningWorkflow(
     },
   });
 
-  // Attach ripple explanations to the prepared action and persist in store
-  if (proposedActions.length > 0) {
-    proposedActions[0].whyEvidence = rippleGraph.explanations;
-    store.mutate((draft) => {
-      // Replace older pending meal-shortage purchases; inventory restock proposals are kept.
-      draft.actions = draft.actions.filter(
-        (a) =>
-          a.status !== "PENDING_APPROVAL" ||
-          a.type !== "VENDOR_PURCHASE_CALL" ||
-          a.origin === "INVENTORY_REORDER" ||
-          a.origin === "DELIVERY_SHORTFALL" ||
-          a.origin === "VOICE_ORDER"
-      );
-      draft.actions.unshift(proposedActions[0]);
-    });
+  // Attach each order's ripple explanations and save the orders (they wait for one tap: "Call store").
+  if (simulation.shortageCount > 0) {
+    for (const p of proposedActions) {
+      const own = rippleGraph.explanations.filter((e) => p.items.some((i) => i.resourceId === e.resourceId));
+      if (own.length > 0) p.whyEvidence = own;
+    }
+    saveShortageOrders(store, householdId, proposedActions);
+    if (unassignedShortages.length > 0) {
+      store.mutate((draft) => {
+        draft.timeline.unshift({
+          id: `tl_nostore_${crypto.randomUUID().slice(0, 6)}`,
+          householdId,
+          eventId,
+          timestamp: new Date().toISOString(),
+          timeFormatted: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+          title: "No store to order from",
+          description: `Add a store that sells ${unassignedShortages
+            .map((u) => `${u.name} (${u.deficitDisplay} short)`)
+            .join(", ")} to order it by phone.`,
+          category: "shortage",
+          status: "WARNING",
+        });
+      });
+    }
   }
 
   // Step 7: Deterministic Forecast Engine refreshes household forecasts
@@ -1262,4 +1175,5 @@ export async function runActionApprovalAndExecutionWorkflow(
 export * from "./voice-agent.js";
 
 export * from "./reorder-workflow.js";
+export * from "./shortage-orders.js";
 export * from "./voice-order-workflow.js";

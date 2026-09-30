@@ -123,13 +123,12 @@ function useInvalidateCart() {
 }
 
 export const useAsk = () => {
-  const invalidateCart = useInvalidateCart();
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { question: string; history: life.AssistantTurn[]; image?: string }) =>
       life.askAssistant(v.question, v.history, v.image),
-    onSuccess: (answer) => {
-      if (answer.actions?.length) void invalidateCart();
-    },
+    // The agent can change anything (meal plans, orders, bills, cart…): refresh every screen.
+    onSuccess: () => invalidateAllHouseholdQueries(qc),
   });
 };
 export const useAskByVoice = () => {

@@ -31,7 +31,14 @@ export type Circular = ReturnType<LifeService["circular"]>;
 export type OccasionPlan = ReturnType<LifeService["occasionPlan"]>;
 export type Notifications = ReturnType<LifeService["notifications"]>;
 /** Rule-based answers carry no actions; API answers may report cart changes the assistant made. */
-export type Answer = ReturnType<LifeService["ask"]> & { actions?: AssistantAction[]; provider?: string };
+export type Answer = ReturnType<LifeService["ask"]> & {
+  actions?: AssistantAction[];
+  provider?: string;
+  /** Store orders the agent prepared; each gets a "Call store" button. */
+  orders?: Array<{ id: string; vendor: string; items: string; estimatedCost: string; status: string }>;
+  /** App features the agent used to answer. */
+  steps?: string[];
+};
 export type CatalogRecipeView = ReturnType<LifeService["recipes"]>[number];
 export type Plans = ReturnType<LifeService["plans"]>;
 export type SearchHit = ReturnType<LifeService["search"]>[number];

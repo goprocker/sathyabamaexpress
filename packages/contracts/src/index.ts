@@ -1152,6 +1152,8 @@ export const OrderRequestSchema = z.object({
   items: z.string().trim().min(2).max(500),
   store: z.string().trim().max(80).optional(),
   delivery: z.string().trim().max(80).optional(),
+  /** Prepare the store orders without calling; each waits for a "Call store" tap. */
+  prepareOnly: z.boolean().optional(),
 });
 export type OrderRequest = z.infer<typeof OrderRequestSchema>;
 

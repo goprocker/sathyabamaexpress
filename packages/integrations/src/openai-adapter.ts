@@ -571,3 +571,50 @@ export async function extractBillWithVision(options: { imageDataUrl: string; kin
   if (typeof value.consumerNo === "string" && value.consumerNo.trim()) out.consumerNo = value.consumerNo.trim().slice(0, 30);
   return out;
 }
+
+// ── Tool-calling chat (the Ask agent) ──────────────────────────────────────
+
+export type ChatToolMessage =
+  | { role: "system" | "user"; content: string | unknown[] }
+  | { role: "assistant"; content: string | null; tool_calls?: ChatToolCall[] }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+export interface ChatToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+export interface ChatToolSpec {
+  type: "function";
+  function: { name: string; description: string; parameters: Record<string, unknown> };
+}
+
+/** One step of a tool-calling conversation: the model either calls tools or answers. */
+export async function chatWithTools(options: {
+  messages: ChatToolMessage[];
+  tools: ChatToolSpec[];
+  model?: string;
+}): Promise<{ content: string | null; toolCalls: ChatToolCall[] }> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) throw new Error("OPENAI_API_KEY is required for this operation.");
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: options.model || process.env.OPENAI_AGENT_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini",
+      messages: options.messages,
+      tools: options.tools,
+      tool_choice: "auto",
+      parallel_tool_calls: true,
+      temperature: 0.2,
+    }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!response.ok) throw new Error(`OpenAI request failed (${response.status}).`);
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | null; tool_calls?: ChatToolCall[] } }>;
+  };
+  const message = data.choices?.[0]?.message;
+  return { content: message?.content ?? null, toolCalls: message?.tool_calls ?? [] };
+}

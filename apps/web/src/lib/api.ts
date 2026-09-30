@@ -767,6 +767,22 @@ function normalizeActionItem(item: BackendActionItem): ActionItem {
   };
 }
 
+export interface ShortageOrders {
+  /** Store orders covering what the ripple engine found short (plus restocks), newest first. */
+  orders: ActionItem[];
+  short: Array<{ resourceId: string; name: string; deficitDisplay: string }>;
+  /** Short items no store sells yet. */
+  missingStore: Array<{ resourceId: string; name: string; deficitDisplay: string }>;
+  storeCount: number;
+  live: boolean;
+}
+
+export async function getShortageOrders(): Promise<ShortageOrders> {
+  const remote = await apiFetch<Omit<ShortageOrders, "orders"> & { orders: BackendActionItem[] }>("/shortage-orders");
+  if (!remote) return { orders: [], short: [], missingStore: [], storeCount: 0, live: false };
+  return { ...remote, orders: remote.orders.map(normalizeActionItem) };
+}
+
 export async function getActions(): Promise<ActionItem[]> {
   const remote = await apiFetch<{ actions: BackendActionItem[] }>("/actions");
   if (remote && Array.isArray(remote.actions)) {
