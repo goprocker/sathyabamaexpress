@@ -128,7 +128,7 @@ describe("Demo login", () => {
     assert.equal(subs.length, 7);
     for (const s of subs) assert.match(s.payUrl, /^https:\/\//);
     const netflix = subs.find((s: { title: string }) => s.title === "Netflix");
-    assert.equal(netflix.payUrl, "https://www.netflix.com/youraccount");
+    assert.equal(netflix.payUrl, "https://www.netflix.com/signup/planform");
     assert.equal(subs.find((s: { title: string }) => s.title === "ZEE5").status, "OVERDUE");
     await a.close();
   });
@@ -233,7 +233,7 @@ describe("Subscriptions", () => {
     const a = make();
     assert.equal((await post(a, "user_a", "/api/profile/subscriptions", sub({ plan: "Standard" }))).statusCode, 200);
     const o = (await get(a, "user_a", "/api/obligations")).obligations.find((x: { title: string }) => x.title === "Netflix");
-    assert.equal(o.payUrl, "https://www.netflix.com/youraccount");
+    assert.equal(o.payUrl, "https://www.netflix.com/signup/planform");
     assert.equal(o.amountInr, 649);
     assert.equal(o.status, "DUE_SOON");
     const reminders = (await get(a, "user_a", "/api/profile")).reminders;

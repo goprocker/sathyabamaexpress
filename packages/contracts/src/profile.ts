@@ -321,16 +321,16 @@ export const SUBSCRIPTION_PROVIDERS = ["netflix", "prime_video", "hotstar", "spo
 export const SubscriptionProviderSchema = z.enum(SUBSCRIPTION_PROVIDERS);
 export type SubscriptionProvider = z.infer<typeof SubscriptionProviderSchema>;
 
-/** Where each service takes payment. "Pay" opens this page in the browser; the payment itself happens on the provider's site. */
+/** Each service's plans and sign-up page. "Pay" opens this page in the browser; the payment itself happens on the provider's site. */
 export const SUBSCRIPTION_CATALOG: Record<SubscriptionProvider, { label: string; payUrl: string }> = {
-  netflix: { label: "Netflix", payUrl: "https://www.netflix.com/youraccount" },
-  prime_video: { label: "Amazon Prime", payUrl: "https://www.amazon.in/gp/primecentral" },
+  netflix: { label: "Netflix", payUrl: "https://www.netflix.com/signup/planform" },
+  prime_video: { label: "Amazon Prime", payUrl: "https://www.primevideo.com/signup?ref_=atv_nb_join_prime" },
   hotstar: { label: "JioHotstar", payUrl: "https://www.hotstar.com/in/subscribe" },
-  spotify: { label: "Spotify", payUrl: "https://www.spotify.com/in-en/account/subscription/" },
-  youtube_premium: { label: "YouTube Premium", payUrl: "https://www.youtube.com/paid_memberships" },
+  spotify: { label: "Spotify", payUrl: "https://www.spotify.com/in-en/premium/" },
+  youtube_premium: { label: "YouTube Premium", payUrl: "https://www.youtube.com/premium" },
   sonyliv: { label: "SonyLIV", payUrl: "https://www.sonyliv.com/subscribe" },
-  zee5: { label: "ZEE5", payUrl: "https://www.zee5.com/myaccount/subscription" },
-  apple_tv: { label: "Apple TV+", payUrl: "https://apps.apple.com/account/subscriptions" },
+  zee5: { label: "ZEE5", payUrl: "https://www.zee5.com/premium" },
+  apple_tv: { label: "Apple TV+", payUrl: "https://www.apple.com/in/apple-tv-plus/" },
   other: { label: "Other service", payUrl: "" },
 };
 
